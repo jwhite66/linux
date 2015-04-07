@@ -19,7 +19,6 @@
  */
 
 #include <linux/kthread.h>
-#include <linux/export.h>
 
 #include "usbredir.h"
 
@@ -92,7 +91,6 @@ int usbredir_start_eh(struct usbredir_device *ud)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(usbredir_start_eh);
 
 void usbredir_stop_eh(struct usbredir_device *ud)
 {
@@ -102,7 +100,6 @@ void usbredir_stop_eh(struct usbredir_device *ud)
 	kthread_stop(ud->eh);
 	pr_debug("USBREDIR_EH has finished\n");
 }
-EXPORT_SYMBOL_GPL(usbredir_stop_eh);
 
 void usbredir_event_add(struct usbredir_device *ud, unsigned long event)
 {
@@ -113,7 +110,6 @@ void usbredir_event_add(struct usbredir_device *ud, unsigned long event)
 	wake_up(&ud->eh_waitq);
 	spin_unlock_irqrestore(&ud->lock, flags);
 }
-EXPORT_SYMBOL_GPL(usbredir_event_add);
 
 int usbredir_event_happened(struct usbredir_device *ud)
 {
@@ -126,4 +122,3 @@ int usbredir_event_happened(struct usbredir_device *ud)
 
 	return happened;
 }
-EXPORT_SYMBOL_GPL(usbredir_event_happened);

@@ -31,13 +31,34 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr,
 			   char *out)
 {
 	char *s = out;
+	int i;
+	struct usbredir_device *vdev;
 
 	BUG_ON(!the_controller || !out);
 
 	spin_lock(&the_controller->lock);
 
-	// TODO - implement a proper status
-	out += sprintf(out, "JPW status\n");
+	out += sprintf(out,
+		       "prt sta spd %30.30s %16s local_busid\n",
+		       "devid", "socket");
+	for (i = 0; i < USBREDIR_NPORTS; i++) {
+		vdev = port_to_vdev(i);
+		spin_lock(&vdev->lock);
+		out += sprintf(out, "%03u %03u ", i, vdev->status);
+
+		if (vdev->status == VDEV_ST_USED) {
+			out += sprintf(out, "%03u %40.40s ",
+				       vdev->speed, vdev->devid);
+			out += sprintf(out, "%16p ", vdev->socket);
+			out += sprintf(out, "%s", dev_name(&vdev->udev->dev));
+
+		} else {
+			out += sprintf(out, "000 ------------------------------- 0000000000000000 0-0");
+		}
+
+		out += sprintf(out, "\n");
+		spin_unlock(&vdev->lock);
+	}
 
 	spin_unlock(&the_controller->lock);
 
@@ -48,43 +69,37 @@ static DEVICE_ATTR_RO(status);
 static ssize_t store_detach(struct device *dev, struct device_attribute *attr,
 			    const char *buf, size_t count)
 {
-	int err;
 	char devid[256];
 	__u32 rhport;
+	struct usbredir_device *vdev;
 
 	memset(devid, 0, sizeof(devid));
 	if (sscanf(buf, "%255s", devid) != 1)
 		return -EINVAL;
 
-	spin_lock(&the_controller->lock);
-
-	vdev = find_port(devid);
-	if (! vdev) {
-		pr_err("not connected %d\n", vdev->status);
-		goto error_unlock_controller;
+	rhport = id_to_port(devid);
+	if (rhport < 0) {
+		pr_err("%s: not found\n", devid);
+		return -EINVAL;
 	}
 
+	spin_lock(&the_controller->lock);
+	vdev = port_to_vdev(rhport);
 	spin_lock(&vdev->lock);
 	if (vdev->status == VDEV_ST_NULL) {
-		pr_err("not connected %d\n", vdev->status);
+		pr_err("%s: not connected %d\n", devid, vdev->status);
 
 		spin_unlock(&vdev->lock);
-		goto error_unlock_controller;
+		spin_unlock(&the_controller->lock);
+		return -EINVAL;
 	}
 
-	rhport = vdev->rhport;
 	spin_unlock(&vdev->lock);
+	spin_unlock(&the_controller->lock);
 
 	usbredir_event_add(vdev, VDEV_EVENT_DOWN);
-	err = port_disconnect(rhport);
-	if (err < 0)
-		return -EINVAL;
 
 	return count;
-
-error_unlock_controller:
-	spin_unlock(&the_controller->lock);
-	return -EINVAL;
 }
 static DEVICE_ATTR(detach, S_IWUSR, NULL, store_detach);
 
@@ -103,17 +118,8 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 	int sockfd = 0;
 	char devid[256];
 	int err;
-	__u32 rhport;
-	uint32_t caps[USB_REDIR_CAPS_SIZE] = {
-		usb_redir_cap_bulk_streams |
-		usb_redir_cap_connect_device_version |
-		usb_redir_cap_filter |
-		usb_redir_cap_device_disconnect_ack |
-		usb_redir_cap_ep_info_max_packet_size |
-		usb_redir_cap_64bits_ids |
-		usb_redir_cap_32bits_bulk_length |
-		usb_redir_cap_bulk_receiving
-	};
+	__u32 rhport = -1;
+	int i;
 
 	/*
 	 * @sockfd: socket descriptor of an established TCP connection
@@ -130,45 +136,45 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 	if (!socket)
 		return -EINVAL;
 
-	spin_lock(&the_controller->lock);
-	if (find_port(devid)) {
+	if (id_to_port(devid) >= 0) {
 		dev_err(dev, "%s: already in use\n", devid);
-		goto error_free_socket_controller;
+		sockfd_put(socket);
+		return -EINVAL;
 	}
 
-	vdev = find_open_port();
+	spin_lock(&the_controller->lock);
+	for (i = 0; i < USBREDIR_NPORTS; i++) {
+		vdev = port_to_vdev(i);
+		spin_lock(&vdev->lock);
+		if (vdev->status == VDEV_ST_NULL) {
+			rhport = i;
+			break;
+		}
+		spin_unlock(&vdev->lock);
+	}
 
-	if (! vdev) {
+	if (rhport < 0) {
 		dev_err(dev, "%s: no port available\n", devid);
-		goto error_free_socket_controller;
+		spin_unlock(&the_controller->lock);
+		sockfd_put(socket);
+		return -EINVAL;
 	}
 
-	spin_lock(&vdev->lock);
 	dev_info(dev, "sockfd(%d) devid(%s)\n", sockfd, devid);
 
-	vdev->devid         = kstrdup(devid, GFP_KERNEL);
-	vdev->status        = VDEV_ST_NOTASSIGNED;
+	vdev->devid  = kstrdup(devid, GFP_KERNEL);
+	vdev->status = VDEV_ST_NOTASSIGNED;
+	vdev->socket = socket;
 
-	vdev->parser     = usbredirparser_create();
-	usbredirparser_init(vdev->parser, "XXX TODO VERSION",
-			    caps, USB_REDIR_CAPS_SIZE, /* flags */0);
-
-	rhport = vdev->rhport;
-
-	spin_unlock(&vdev->lock);
-	spin_unlock(&the_controller->lock);
+	vdev->parser = redir_parser_init(vdev);
 
 	vdev->rx = kthread_get_run(vhci_rx_loop, vdev, "vhci_rx");
 	vdev->tx = kthread_get_run(vhci_tx_loop, vdev, "vhci_tx");
 
-	rh_connect_port(rhport);
+	spin_unlock(&vdev->lock);
+	spin_unlock(&the_controller->lock);
 
 	return count;
-
-error_free_socket_controller:
-	spin_unlock(&the_controller->lock);
-	sockfd_put(socket);
-	return -EINVAL;
 }
 static DEVICE_ATTR(attach, S_IWUSR, NULL, store_attach);
 

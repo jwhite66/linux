@@ -146,6 +146,27 @@ void rh_port_connect(int rhport, enum usb_device_speed speed)
 	usb_hcd_poll_rh_status(usbredir_to_hcd(the_controller));
 }
 
+int id_to_port(const char *devid)
+{
+	int rhport = -1;
+	int i;
+	struct usbredir_device *vdev;
+
+	spin_lock(&the_controller->lock);
+	for (i = 0; i < USBREDIR_NPORTS; i++) {
+		vdev = port_to_vdev(i);
+		spin_lock(&vdev->lock);
+		if (vdev->devid && strcmp(vdev->devid, devid) == 0)
+			rhport = i;
+		spin_unlock(&vdev->lock);
+		if (rhport >= 0)
+			break;
+	}
+	spin_unlock(&the_controller->lock);
+
+	return rhport;
+}
+
 static void rh_port_disconnect(int rhport)
 {
 	pr_debug("rh_port_disconnect %d\n", rhport);
@@ -1089,7 +1110,7 @@ static int usbredir_hcd_resume(struct platform_device *pdev)
 #else
 
 #define usbredir_hcd_suspend	NULL
-#define usbredir_hcd_resume		NULL
+#define usbredir_hcd_resume	NULL
 
 #endif
 

@@ -104,6 +104,9 @@ struct usbredir_device {
 	 */
 	char *devid;
 
+	/* speed of a remote device */
+	enum usb_device_speed speed;
+
 	/* root-hub port to which this device is attached */
 	__u32 rhport;
 
@@ -168,6 +171,7 @@ extern const struct attribute_group dev_attr_group;
 
 /* usbredir.c */
 void rh_port_connect(int rhport, enum usb_device_speed speed);
+int id_to_port(const char *devid);
 
 /* vhci_rx.c */
 struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, __u32 seqnum);
@@ -201,6 +205,10 @@ int usbredir_start_eh(struct usbredir_device *ud);
 void usbredir_stop_eh(struct usbredir_device *ud);
 void usbredir_event_add(struct usbredir_device *ud, unsigned long event);
 int usbredir_event_happened(struct usbredir_device *ud);
+
+/* redir.c */
+struct usbredirparser * redir_parser_init(void *priv);
+
 
 
 #endif /* __USBIP_USBREDIR_H */
