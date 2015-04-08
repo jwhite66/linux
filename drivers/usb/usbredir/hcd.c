@@ -301,12 +301,12 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		case USB_PORT_FEAT_C_RESET:
 			pr_debug(
 				" ClearPortFeature: USB_PORT_FEAT_C_RESET\n");
-			switch (dum->vdev[rhport].speed) {
-			case USB_SPEED_HIGH:
+			switch (dum->vdev[rhport].connect_header.speed) {
+			case usb_redir_speed_high:
 				dum->port_status[rhport] |=
 					USB_PORT_STAT_HIGH_SPEED;
 				break;
-			case USB_SPEED_LOW:
+			case usb_redir_speed_low:
 				dum->port_status[rhport] |=
 					USB_PORT_STAT_LOW_SPEED;
 				break;
@@ -841,8 +841,9 @@ static void usbredir_device_reset(struct usbredir_device *vdev)
 {
 	spin_lock(&vdev->lock);
 
-	vdev->speed  = 0;
-	vdev->devid  = 0;
+	if (vdev->devid)
+		kfree(vdev->devid);
+	vdev->devid  = NULL;
 
 	usb_put_dev(vdev->udev);
 	vdev->udev = NULL;

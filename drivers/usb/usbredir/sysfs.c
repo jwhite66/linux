@@ -48,7 +48,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr,
 
 		if (vdev->status == VDEV_ST_USED) {
 			out += sprintf(out, "%03u %40.40s ",
-				       vdev->speed, vdev->devid);
+				       vdev->connect_header.speed, vdev->devid);
 			out += sprintf(out, "%16p ", vdev->socket);
 			out += sprintf(out, "%s", dev_name(&vdev->udev->dev));
 

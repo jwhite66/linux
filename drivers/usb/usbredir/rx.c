@@ -67,15 +67,25 @@ struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, __u32 seqnum)
 
 int vhci_rx_loop(void *data)
 {
-	struct usbredir_device *ud = data;
+	struct usbredir_device *vdev = data;
+	int rc;
 
 	while (!kthread_should_stop()) {
-		if (usbredir_event_happened(ud))
+		if (usbredir_event_happened(vdev))
 			break;
 
-		if (usbredirparser_do_read(ud->parser)) {
+		// TODO BAD BAD BAD BAD
+		rc = usbredirparser_do_read(vdev->parser);
+		if (rc && rc != -EAGAIN) {
 			// TODO - need to think about this
 			break;
+		}
+
+		if (usbredirparser_has_data_to_write(vdev->parser)) {
+			if (usbredirparser_do_write(vdev->parser)) {
+				// TODO - need to think about this
+				break;
+			}
 		}
 	}
 

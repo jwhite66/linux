@@ -65,16 +65,36 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	msg.msg_namelen = 0;
 	msg.msg_control = NULL;
 	msg.msg_controllen = 0;
-	msg.msg_flags      = MSG_NOSIGNAL;
+	msg.msg_flags = MSG_NOSIGNAL;
 
-	rc = kernel_recvmsg(vdev->socket, &msg, &iov, 1, count, MSG_WAITALL);
+	rc = kernel_recvmsg(vdev->socket, &msg, &iov, 1, count, MSG_DONTWAIT);
+	if (rc > 0) {
+pr_info("JPW read %d\n", rc);
+		print_hex_dump_bytes("redir_read", DUMP_PREFIX_NONE, data, rc);
+	}
+
 	return rc;
 }
 
 static int redir_write(void *priv, uint8_t *data, int count)
 {
-	TODO_IMPLEMENT;
-	return 0;
+	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	struct msghdr msg;
+	struct kvec iov;
+	int rc;
+
+	memset(&msg, 0, sizeof(msg));
+	memset(&iov, 0, sizeof(iov));
+	msg.msg_flags = MSG_NOSIGNAL | MSG_DONTWAIT;
+	iov.iov_base = data;
+	iov.iov_len  = count;
+pr_info("JPW writing %d\n", count);
+	rc = kernel_sendmsg(vdev->socket, &msg, &iov, 1, count);
+	if (rc > 0) {
+		print_hex_dump_bytes("redir_write", DUMP_PREFIX_NONE, data, rc);
+	}
+
+	return rc;
 }
 
 
@@ -113,13 +133,34 @@ static void redir_free_lock(void *lock)
 static void redir_hello(void *priv,
     struct usb_redir_hello_header *hello)
 {
-	TODO_IMPLEMENT;
+	pr_debug("Hello!\n");
+}
+
+static enum usb_device_speed convert_speed(int speed)
+{
+	switch(speed) {
+	case usb_redir_speed_low:   return USB_SPEED_LOW;
+	case usb_redir_speed_full:  return USB_SPEED_FULL;
+	case usb_redir_speed_high:  return USB_SPEED_HIGH;
+	case usb_redir_speed_super: return USB_SPEED_SUPER;
+	default:		    return USB_SPEED_UNKNOWN;
+	}
 }
 
 static void redir_device_connect(void *priv,
     struct usb_redir_device_connect_header *device_connect)
 {
-	TODO_IMPLEMENT;
+	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	// TODO: lock?
+	vdev->connect_header = *device_connect;
+
+	pr_info("  class %2d subclass %2d protocol %2d",
+           device_connect->device_class, device_connect->device_subclass,
+           device_connect->device_protocol);
+	pr_info("  vendor 0x%04x product %04x\n",
+           device_connect->vendor_id, device_connect->product_id);
+
+	rh_port_connect(vdev->rhport, convert_speed(device_connect->speed));
 }
 
 static void redir_device_disconnect(void *priv)
@@ -133,15 +174,39 @@ static void redir_reset(void *priv)
 }
 
 static void redir_interface_info(void *priv,
-    struct usb_redir_interface_info_header *interface_info)
+    struct usb_redir_interface_info_header *info)
 {
-	TODO_IMPLEMENT;
+	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	int i;
+
+	vdev->info_header = *info;
+	// TODO: lock?
+	for (i = 0; i < info->interface_count; i++) {
+		pr_info("interface %d class %2d subclass %2d protocol %2d",
+			info->interface[i], info->interface_class[i],
+			info->interface_subclass[i], info->interface_protocol[i]);
+	}
 }
+
+/* Macros to go from an endpoint address to an index for our ep array */
+#define EP2I(ep_address) (((ep_address & 0x80) >> 3) | (ep_address & 0x0f))
+#define I2EP(i) (((i & 0x10) << 3) | (i & 0x0f))
 
 static void redir_ep_info(void *priv,
     struct usb_redir_ep_info_header *ep_info)
 {
-	TODO_IMPLEMENT;
+	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	int i;
+
+	// TODO - lock?
+	vdev->ep_info_header = *ep_info;
+	for (i = 0; i < 32; i++) {
+		if (ep_info->type[i] != usb_redir_type_invalid) {
+			pr_info("endpoint: %02X, type: %d, interval: %d, interface: %d",
+				I2EP(i), (int)ep_info->type[i], (int)ep_info->interval[i],
+				(int)ep_info->interface[i]);
+		}
+	}
 }
 
 static void redir_set_configuration(void *priv,
@@ -375,7 +440,7 @@ struct usbredirparser * redir_parser_init(void *priv)
 #endif
 
 	usbredirparser_init(parser, "XXX TODO VERSION",
-			    caps, USB_REDIR_CAPS_SIZE, /* flags */0);
+			    caps, USB_REDIR_CAPS_SIZE, 0);
 
 	return parser;
 }

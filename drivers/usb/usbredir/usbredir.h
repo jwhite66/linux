@@ -104,8 +104,9 @@ struct usbredir_device {
 	 */
 	char *devid;
 
-	/* speed of a remote device */
-	enum usb_device_speed speed;
+	struct usb_redir_device_connect_header connect_header;
+	struct usb_redir_interface_info_header info_header;
+	struct usb_redir_ep_info_header ep_info_header;
 
 	/* root-hub port to which this device is attached */
 	__u32 rhport;
