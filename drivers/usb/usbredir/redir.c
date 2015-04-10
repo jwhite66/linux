@@ -70,7 +70,7 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	rc = kernel_recvmsg(vdev->socket, &msg, &iov, 1, count, MSG_DONTWAIT);
 	if (rc > 0) {
 pr_info("JPW read %d\n", rc);
-		print_hex_dump_bytes("redir_read", DUMP_PREFIX_NONE, data, rc);
+		print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, rc);
 	}
 
 	return rc;
@@ -342,7 +342,43 @@ static void redir_control_packet(void *priv,
     uint64_t id, struct usb_redir_control_packet_header *control_header,
     uint8_t *data, int data_len)
 {
-	TODO_IMPLEMENT;
+	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	struct urb *urb;
+
+pr_info("JPW handling control packet response, id %ld\n", (long) id);
+pr_info("data length %d:\n", data_len);
+print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
+
+	spin_lock(&vdev->priv_lock);
+	urb = pickup_urb_and_free_priv(vdev, id);
+	spin_unlock(&vdev->priv_lock);
+	if (!urb) {
+		pr_err("Error: control id %lu received with no matching"
+		       " entry.\n",  (unsigned long) id);
+		return;
+	}
+
+	// TODO - handle more than this flavor...
+	if (urb->transfer_buffer) {
+		memcpy(urb->transfer_buffer, data,
+		       min((u32) data_len, urb->transfer_buffer_length));
+		// TODO - map statii correctly
+		urb->status = min((u32) data_len, urb->transfer_buffer_length);
+	}
+	// TODO - map statii correctly
+	urb->status = control_header->status;
+	urb->actual_length = min((u32) data_len, urb->transfer_buffer_length);
+
+pr_info("JPW status %d, u status %d complete %p\n",
+	control_header->status, urb->status, urb->complete);
+	if (urb->complete)
+		urb->complete(urb);
+
+	spin_lock(&the_controller->lock);
+	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(the_controller), urb);
+	spin_unlock(&the_controller->lock);
+
+	usb_hcd_giveback_urb(usbredir_to_hcd(the_controller), urb, urb->status);
 }
 
 static void redir_bulk_packet(void *priv,

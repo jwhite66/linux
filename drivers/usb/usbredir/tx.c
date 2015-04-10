@@ -22,17 +22,123 @@
 
 #include "usbredir.h"
 
+static struct usbredir_priv *dequeue_from_priv_tx(struct usbredir_device *vdev)
+{
+	struct usbredir_priv *priv, *tmp;
+
+	spin_lock(&vdev->priv_lock);
+
+	list_for_each_entry_safe(priv, tmp, &vdev->priv_tx, list) {
+		list_move_tail(&priv->list, &vdev->priv_rx);
+		spin_unlock(&vdev->priv_lock);
+		return priv;
+	}
+
+	spin_unlock(&vdev->priv_lock);
+
+	return NULL;
+}
+
+static int send_cmd_submit(struct usbredir_device *vdev)
+{
+	struct usbredir_priv *priv = NULL;
+
+	size_t total_size = 0;
+
+	while ((priv = dequeue_from_priv_tx(vdev)) != NULL) {
+		struct urb *urb = priv->urb;
+		__u8 type = usb_pipetype(urb->pipe);
+
+		pr_info("JPW sez urb: [pipe %x|type %d|stream_id %u|status %d|",
+			urb->pipe, type, urb->stream_id, urb->status);
+		pr_info("tflags 0x%x|mapped sgs %d|num_sgs %d|tbuflen %u|",
+			urb->transfer_flags, urb->num_mapped_sgs, urb->num_sgs,
+			urb->transfer_buffer_length);
+		pr_info("complete %p|", urb->complete);
+		pr_info("pipedevice %x|", usb_pipedevice(urb->pipe));
+		pr_info("act len %u|st frame %d|num pack %d|int %d|err %d]\n",
+			urb->actual_length, urb->start_frame,
+			urb->number_of_packets, urb->interval,
+			urb->error_count);
+
+		if (type == PIPE_CONTROL && urb->setup_packet) {
+			struct usb_ctrlrequest *ctrlreq =
+				(struct usb_ctrlrequest *) urb->setup_packet;
+			struct usb_redir_control_packet_header ctrl;
+
+			pr_info("control request:\n");
+			print_hex_dump_bytes("", DUMP_PREFIX_NONE,
+				     ctrlreq, sizeof(*ctrlreq));
+
+			ctrl.endpoint = usb_pipein(urb->pipe) ?
+				USB_DIR_IN : USB_DIR_OUT;
+			ctrl.request = ctrlreq->bRequest;
+			ctrl.requesttype = ctrlreq->bRequestType;
+			ctrl.status = 0;
+			ctrl.value = le16_to_cpu(ctrlreq->wValue);
+			ctrl.index = le16_to_cpu(ctrlreq->wIndex);
+			ctrl.length = le16_to_cpu(ctrlreq->wLength);
+
+			usbredirparser_send_control_packet(vdev->parser,
+				priv->seqnum, &ctrl, NULL, 0);
+		}
+
+		if (urb->transfer_buffer_length && urb->transfer_buffer)
+			print_hex_dump_bytes("", DUMP_PREFIX_NONE,
+					     urb->transfer_buffer,
+					     urb->transfer_buffer_length);
+	}
+
+	return total_size;
+}
+
+static struct usbredir_unlink *dequeue_from_unlink_tx(struct usbredir_device *vdev)
+{
+	struct usbredir_unlink *unlink, *tmp;
+
+	spin_lock(&vdev->priv_lock);
+
+	list_for_each_entry_safe(unlink, tmp, &vdev->unlink_tx, list) {
+		list_move_tail(&unlink->list, &vdev->unlink_rx);
+		spin_unlock(&vdev->priv_lock);
+		return unlink;
+	}
+
+	spin_unlock(&vdev->priv_lock);
+
+	return NULL;
+}
+
+static int send_cmd_unlink(struct usbredir_device *vdev)
+{
+	struct usbredir_unlink *unlink = NULL;
+
+	size_t total_size = 0;
+
+	while ((unlink = dequeue_from_unlink_tx(vdev)) != NULL) {
+		pr_info("unlink request of seqnum %ld, unlink seqnum %ld\n",
+			unlink->seqnum, unlink->unlink_seqnum);
+	}
+
+	return total_size;
+}
+
+
 int vhci_tx_loop(void *data)
 {
 	struct usbredir_device *vdev = data;
 
 	while (!kthread_should_stop()) {
+		if (send_cmd_submit(vdev) < 0)
+			break;
+
+		if (send_cmd_unlink(vdev) < 0)
+			break;
+
 		wait_event_interruptible(vdev->waitq_tx,
 					 (!list_empty(&vdev->priv_tx) ||
 					  !list_empty(&vdev->unlink_tx) ||
 					  kthread_should_stop()));
-
-		pr_debug("pending urbs ?, now wake up\n");
 	}
 
 	return 0;

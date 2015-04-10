@@ -206,6 +206,7 @@ static int hub_status(struct usb_hcd *hcd, char *buf)
 	int		rhport;
 	int		changed = 0;
 
+dump_stack(); // JPW
 	retval = DIV_ROUND_UP(USBREDIR_NPORTS + 1, 8);
 	memset(buf, 0, retval);
 
@@ -233,6 +234,7 @@ static int hub_status(struct usb_hcd *hcd, char *buf)
 
 done:
 	spin_unlock(&usbredir->lock);
+pr_debug("JPW hub_status reports changed %d, retval %d\n", changed, retval); 
 	return changed ? retval : 0;
 }
 
@@ -481,8 +483,9 @@ static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 	int ret = 0;
 	struct usbredir_device *vdev;
 
-	pr_debug("enter, usb_hcd %p urb %p mem_flags %d\n",
+	pr_debug("urb_enqueue: enter, usb_hcd %p urb %p mem_flags %d\n",
 			  hcd, urb, mem_flags);
+dump_stack(); // JPW
 
 	/* patch to usb_sg_init() is in 2.5.60 */
 	BUG_ON(!urb->transfer_buffer && urb->transfer_buffer_length);
@@ -639,7 +642,8 @@ static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 	struct usbredir_priv *priv;
 	struct usbredir_device *vdev;
 
-	pr_info("dequeue a urb %p\n", urb);
+	pr_info("enter dequeue urb %p\n", urb);
+dump_stack(); // JPW
 
 	spin_lock(&the_controller->lock);
 
@@ -722,7 +726,7 @@ static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
 	spin_unlock(&the_controller->lock);
 
-	pr_debug("leave\n");
+	pr_debug("leave urb_dequeue\n");
 	return 0;
 }
 
