@@ -23,24 +23,6 @@
 
 #include "usbredirparser.h"
 
-#define kthread_get_run(threadfn, data, namefmt, ...)			   \
-({									   \
-	struct task_struct *__k						   \
-		= kthread_create(threadfn, data, namefmt, ## __VA_ARGS__); \
-	if (!IS_ERR(__k)) {						   \
-		get_task_struct(__k);					   \
-		wake_up_process(__k);					   \
-	}								   \
-	__k;								   \
-})
-
-#define kthread_stop_put(k)		\
-	do {				\
-		kthread_stop(k);	\
-		put_task_struct(k);	\
-	} while (0)
-
-
 /* event handler */
 #define USBREDIR_EH_SHUTDOWN	(1 << 0)
 #define USBREDIR_EH_BYE		(1 << 1)
@@ -139,7 +121,6 @@ struct usbredir_unlink {
 /* Number of supported ports. Value has an upperbound of USB_MAXCHILDREN */
 #define USBREDIR_NPORTS 8
 
-/* for usb_bus.hcpriv */
 struct usbredir_hcd {
 	spinlock_t lock;
 
@@ -173,10 +154,10 @@ int rx_loop(void *data);
 int tx_loop(void *data);
 
 /* event.c */
-int usbredir_start_eh(struct usbredir_device *ud);
-void usbredir_stop_eh(struct usbredir_device *ud);
-void usbredir_event_add(struct usbredir_device *ud, unsigned long event);
-int usbredir_event_happened(struct usbredir_device *ud);
+int usbredir_start_eh(struct usbredir_device *vdev);
+void usbredir_stop_eh(struct usbredir_device *vdev);
+void usbredir_event_add(struct usbredir_device *vdev, unsigned long event);
+int usbredir_event_happened(struct usbredir_device *vdev);
 
 /* redir.c */
 struct usbredirparser * redir_parser_init(void *priv);

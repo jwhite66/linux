@@ -22,39 +22,39 @@
 
 #include "usbredir.h"
 
-static int event_handler(struct usbredir_device *ud)
+static int event_handler(struct usbredir_device *vdev)
 {
 	pr_debug("enter\n");
 
 	/*
 	 * Events are handled by only this thread.
 	 */
-	while (usbredir_event_happened(ud)) {
-		pr_debug("pending event %lx\n", ud->event);
+	while (usbredir_event_happened(vdev)) {
+		pr_debug("pending event %lx\n", vdev->event);
 
 		/*
 		 * NOTE: shutdown must come first.
 		 * Shutdown the device.
 		 */
-		if (ud->event & USBREDIR_EH_SHUTDOWN) {
-			ud->eh_ops.shutdown(ud);
-			ud->event &= ~USBREDIR_EH_SHUTDOWN;
+		if (vdev->event & USBREDIR_EH_SHUTDOWN) {
+			vdev->eh_ops.shutdown(vdev);
+			vdev->event &= ~USBREDIR_EH_SHUTDOWN;
 		}
 
 		/* Reset the device. */
-		if (ud->event & USBREDIR_EH_RESET) {
-			ud->eh_ops.reset(ud);
-			ud->event &= ~USBREDIR_EH_RESET;
+		if (vdev->event & USBREDIR_EH_RESET) {
+			vdev->eh_ops.reset(vdev);
+			vdev->event &= ~USBREDIR_EH_RESET;
 		}
 
 		/* Mark the device as unusable. */
-		if (ud->event & USBREDIR_EH_UNUSABLE) {
-			ud->eh_ops.unusable(ud);
-			ud->event &= ~USBREDIR_EH_UNUSABLE;
+		if (vdev->event & USBREDIR_EH_UNUSABLE) {
+			vdev->eh_ops.unusable(vdev);
+			vdev->event &= ~USBREDIR_EH_UNUSABLE;
 		}
 
 		/* Stop the error handler. */
-		if (ud->event & USBREDIR_EH_BYE)
+		if (vdev->event & USBREDIR_EH_BYE)
 			return -1;
 	}
 
@@ -63,62 +63,63 @@ static int event_handler(struct usbredir_device *ud)
 
 static int event_handler_loop(void *data)
 {
-	struct usbredir_device *ud = data;
+	struct usbredir_device *vdev = data;
 
 	while (!kthread_should_stop()) {
-		wait_event_interruptible(ud->eh_waitq,
-					 usbredir_event_happened(ud) ||
+		wait_event_interruptible(vdev->eh_waitq,
+					 usbredir_event_happened(vdev) ||
 					 kthread_should_stop());
 		pr_debug("wakeup\n");
 
-		if (event_handler(ud) < 0)
+		if (event_handler(vdev) < 0)
 			break;
 	}
 
 	return 0;
 }
 
-int usbredir_start_eh(struct usbredir_device *ud)
+int usbredir_start_eh(struct usbredir_device *vdev)
 {
-	init_waitqueue_head(&ud->eh_waitq);
-	ud->event = 0;
+	char pname[32];
+	init_waitqueue_head(&vdev->eh_waitq);
+	vdev->event = 0;
 
-	ud->eh = kthread_run(event_handler_loop, ud, "USBREDIR_EH");
-	if (IS_ERR(ud->eh)) {
+	sprintf(pname, "usbredir/eh:%d", vdev->rhport);
+	vdev->eh = kthread_run(event_handler_loop, vdev, pname);
+	if (IS_ERR(vdev->eh)) {
 		pr_warn("Unable to start control thread\n");
-		return PTR_ERR(ud->eh);
+		return PTR_ERR(vdev->eh);
 	}
 
 	return 0;
 }
 
-void usbredir_stop_eh(struct usbredir_device *ud)
+void usbredir_stop_eh(struct usbredir_device *vdev)
 {
-	if (ud->eh == current)
+	if (vdev->eh == current)
 		return; /* do not wait for myself */
 
-	kthread_stop(ud->eh);
-	pr_debug("USBREDIR_EH has finished\n");
+	kthread_stop(vdev->eh);
 }
 
-void usbredir_event_add(struct usbredir_device *ud, unsigned long event)
+void usbredir_event_add(struct usbredir_device *vdev, unsigned long event)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&ud->lock, flags);
-	ud->event |= event;
-	wake_up(&ud->eh_waitq);
-	spin_unlock_irqrestore(&ud->lock, flags);
+	spin_lock_irqsave(&vdev->lock, flags);
+	vdev->event |= event;
+	wake_up(&vdev->eh_waitq);
+	spin_unlock_irqrestore(&vdev->lock, flags);
 }
 
-int usbredir_event_happened(struct usbredir_device *ud)
+int usbredir_event_happened(struct usbredir_device *vdev)
 {
 	int happened = 0;
 
-	spin_lock(&ud->lock);
-	if (ud->event != 0)
+	spin_lock(&vdev->lock);
+	if (vdev->event != 0)
 		happened = 1;
-	spin_unlock(&ud->lock);
+	spin_unlock(&vdev->lock);
 
 	return happened;
 }

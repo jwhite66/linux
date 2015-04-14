@@ -117,6 +117,7 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 	struct socket *socket;
 	int sockfd = 0;
 	char devid[256];
+	char pname[32];
 	int err;
 	__u32 rhport = -1;
 	int i;
@@ -168,8 +169,10 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 
 	vdev->parser = redir_parser_init(vdev);
 
-	vdev->rx = kthread_get_run(rx_loop, vdev, "rx_loop");
-	vdev->tx = kthread_get_run(tx_loop, vdev, "tx_loop");
+	sprintf(pname, "usbredir/rx:%d", vdev->rhport);
+	vdev->rx = kthread_run(rx_loop, vdev, pname);
+	sprintf(pname, "usbredir/tx:%d", vdev->rhport);
+	vdev->tx = kthread_run(tx_loop, vdev, pname);
 
 	spin_unlock(&vdev->lock);
 	spin_unlock(&the_controller->lock);

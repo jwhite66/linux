@@ -738,13 +738,13 @@ static void usbredir_shutdown_connection(struct usbredir_device *vdev)
 		kernel_sock_shutdown(vdev->socket, SHUT_RDWR);
 	}
 
-	/* kill threads related to this sdev */
+	/* kill threads related to this dev */
 	if (vdev->rx) {
-		kthread_stop_put(vdev->rx);
+		kthread_stop(vdev->rx);
 		vdev->rx = NULL;
 	}
 	if (vdev->tx) {
-		kthread_stop_put(vdev->tx);
+		kthread_stop(vdev->tx);
 		vdev->tx = NULL;
 	}
 	pr_info("stop threads\n");
@@ -796,6 +796,7 @@ static void usbredir_device_reset(struct usbredir_device *vdev)
 	vdev->udev = NULL;
 
 	if (vdev->socket) {
+		// TODO - kernel shut down?
 		sockfd_put(vdev->socket);
 		vdev->socket = NULL;
 	}
@@ -804,17 +805,18 @@ static void usbredir_device_reset(struct usbredir_device *vdev)
 	spin_unlock(&vdev->lock);
 }
 
-static void usbredir_device_unusable(struct usbredir_device *ud)
+static void usbredir_device_unusable(struct usbredir_device *vdev)
 {
-	spin_lock(&ud->lock);
-	ud->status = VDEV_ST_ERROR;
-	spin_unlock(&ud->lock);
+	spin_lock(&vdev->lock);
+	vdev->status = VDEV_ST_ERROR;
+	spin_unlock(&vdev->lock);
 }
 
-static void usbredir_device_init(struct usbredir_device *vdev)
+static void usbredir_device_init(struct usbredir_device *vdev, int port)
 {
 	memset(vdev, 0, sizeof(*vdev));
 
+	vdev->rhport = port;
 	vdev->status = VDEV_ST_NULL;
 	spin_lock_init(&vdev->lock);
 
@@ -847,8 +849,7 @@ static int usbredir_start(struct usb_hcd *hcd)
 	for (rhport = 0; rhport < USBREDIR_NPORTS; rhport++) {
 		struct usbredir_device *vdev = &uhcd->vdev[rhport];
 
-		usbredir_device_init(vdev);
-		vdev->rhport = rhport;
+		usbredir_device_init(vdev, rhport);
 	}
 
 	atomic_set(&uhcd->seqnum, 0);
