@@ -178,13 +178,13 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR(attach, S_IWUSR, NULL, store_attach);
 
-static struct attribute *dev_attrs[] = {
+static struct attribute *hub_dev_attrs[] = {
 	&dev_attr_status.attr,
 	&dev_attr_detach.attr,
 	&dev_attr_attach.attr,
 	NULL,
 };
 
-const struct attribute_group dev_attr_group = {
-	.attrs = dev_attrs,
+const struct attribute_group hub_attr_group = {
+	.attrs = hub_dev_attrs,
 };

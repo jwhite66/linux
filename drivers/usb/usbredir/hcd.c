@@ -206,7 +206,6 @@ static int hub_status(struct usb_hcd *hcd, char *buf)
 	int		rhport;
 	int		changed = 0;
 
-dump_stack(); // JPW
 	retval = DIV_ROUND_UP(USBREDIR_NPORTS + 1, 8);
 	memset(buf, 0, retval);
 
@@ -914,7 +913,7 @@ static int usbredir_start(struct usb_hcd *hcd)
 	hcd->uses_new_polling = 1;
 
 	/* usbredir_hcd is now ready to be controlled through sysfs */
-	err = sysfs_create_group(&usbredir_dev(usbredir)->kobj, &dev_attr_group);
+	err = sysfs_create_group(&usbredir_dev(usbredir)->kobj, &hub_attr_group);
 	if (err) {
 		pr_err("create sysfs files\n");
 		return err;
@@ -931,7 +930,7 @@ static void usbredir_stop(struct usb_hcd *hcd)
 	pr_debug("stop USBREDIR controller\n");
 
 	/* 1. remove the userland interface of usbredir_hcd */
-	sysfs_remove_group(&usbredir_dev(usbredir)->kobj, &dev_attr_group);
+	sysfs_remove_group(&usbredir_dev(usbredir)->kobj, &hub_attr_group);
 
 	/* 2. shutdown all the ports of usbredir_hcd */
 	for (rhport = 0; rhport < USBREDIR_NPORTS; rhport++) {
