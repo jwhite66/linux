@@ -19,6 +19,7 @@
 
 
 #include <linux/net.h>
+#include <linux/kthread.h>
 #include <net/sock.h>
 #include <linux/semaphore.h>
 #include <linux/slab.h>
@@ -58,6 +59,9 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	struct kvec iov;
 	int rc;
 
+	if (kthread_should_stop() || usbredir_event_happened(vdev))
+		return -ESRCH;
+
 	vdev->socket->sk->sk_allocation = GFP_NOIO;
 	iov.iov_base    = data;
 	iov.iov_len     = count;
@@ -67,7 +71,8 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	msg.msg_controllen = 0;
 	msg.msg_flags = MSG_NOSIGNAL;
 
-	rc = kernel_recvmsg(vdev->socket, &msg, &iov, 1, count, MSG_DONTWAIT);
+pr_info("JPW enter read, max %d\n", count);
+	rc = kernel_recvmsg(vdev->socket, &msg, &iov, 1, count, MSG_WAITALL);
 	if (rc > 0) {
 pr_info("JPW read %d\n", rc);
 		print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, rc);

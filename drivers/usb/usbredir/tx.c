@@ -129,6 +129,13 @@ int tx_loop(void *data)
 	struct usbredir_device *vdev = data;
 
 	while (!kthread_should_stop()) {
+		if (usbredirparser_has_data_to_write(vdev->parser)) {
+			if (usbredirparser_do_write(vdev->parser)) {
+				// TODO - need to think about this
+				break;
+			}
+		}
+
 		if (send_cmd_submit(vdev) < 0)
 			break;
 
@@ -136,9 +143,10 @@ int tx_loop(void *data)
 			break;
 
 		wait_event_interruptible(vdev->waitq_tx,
-					 (!list_empty(&vdev->priv_tx) ||
-					  !list_empty(&vdev->unlink_tx) ||
-					  kthread_should_stop()));
+			 (!list_empty(&vdev->priv_tx) ||
+			  !list_empty(&vdev->unlink_tx) ||
+			  kthread_should_stop()) ||
+			 usbredirparser_has_data_to_write(vdev->parser));
 	}
 
 	return 0;

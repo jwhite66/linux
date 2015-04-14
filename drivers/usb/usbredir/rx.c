@@ -74,18 +74,11 @@ int rx_loop(void *data)
 		if (usbredir_event_happened(vdev))
 			break;
 
-		// TODO BAD BAD BAD BAD
 		rc = usbredirparser_do_read(vdev->parser);
-		if (rc && rc != -EAGAIN) {
-			// TODO - need to think about this
+		if (rc != -EAGAIN) {
+			pr_info("connection closed");
+			usbredir_event_add(vdev, VDEV_EVENT_DOWN);
 			break;
-		}
-
-		if (usbredirparser_has_data_to_write(vdev->parser)) {
-			if (usbredirparser_do_write(vdev->parser)) {
-				// TODO - need to think about this
-				break;
-			}
 		}
 	}
 
