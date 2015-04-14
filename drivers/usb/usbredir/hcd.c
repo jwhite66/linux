@@ -190,7 +190,7 @@ static void rh_port_disconnect(int rhport)
  */
 static int hub_status(struct usb_hcd *hcd, char *buf)
 {
-	struct usbredir_hcd	*usbredir;
+	struct usbredir_hcd	*uhcd = hcd_to_usbredir(hcd);
 	int		retval;
 	int		rhport;
 	int		changed = 0;
@@ -198,9 +198,7 @@ static int hub_status(struct usb_hcd *hcd, char *buf)
 	retval = DIV_ROUND_UP(USBREDIR_NPORTS + 1, 8);
 	memset(buf, 0, retval);
 
-	usbredir = hcd_to_usbredir(hcd);
-
-	spin_lock(&usbredir->lock);
+	spin_lock(&uhcd->lock);
 	if (!HCD_HW_ACCESSIBLE(hcd)) {
 		pr_debug("hw accessible flag not on?\n");
 		goto done;
@@ -208,7 +206,7 @@ static int hub_status(struct usb_hcd *hcd, char *buf)
 
 	/* check pseudo status register for each port */
 	for (rhport = 0; rhport < USBREDIR_NPORTS; rhport++) {
-		if ((usbredir->port_status[rhport] & PORT_C_MASK)) {
+		if ((uhcd->port_status[rhport] & PORT_C_MASK)) {
 			/* The status of a port has been changed, */
 			pr_debug("port %d status changed\n", rhport);
 
@@ -221,7 +219,7 @@ static int hub_status(struct usb_hcd *hcd, char *buf)
 		usb_hcd_resume_root_hub(hcd);
 
 done:
-	spin_unlock(&usbredir->lock);
+	spin_unlock(&uhcd->lock);
 pr_debug("JPW hub_status reports changed %d, retval %d\n", changed, retval); 
 	return changed ? retval : 0;
 }
@@ -838,7 +836,7 @@ static void usbredir_device_init(struct usbredir_device *vdev)
 
 static int usbredir_start(struct usb_hcd *hcd)
 {
-	struct usbredir_hcd *usbredir = hcd_to_usbredir(hcd);
+	struct usbredir_hcd *uhcd = hcd_to_usbredir(hcd);
 	int rhport;
 	int err = 0;
 
@@ -847,20 +845,20 @@ static int usbredir_start(struct usb_hcd *hcd)
 	/* initialize private data of usb_hcd */
 
 	for (rhport = 0; rhport < USBREDIR_NPORTS; rhport++) {
-		struct usbredir_device *vdev = &usbredir->vdev[rhport];
+		struct usbredir_device *vdev = &uhcd->vdev[rhport];
 
 		usbredir_device_init(vdev);
 		vdev->rhport = rhport;
 	}
 
-	atomic_set(&usbredir->seqnum, 0);
-	spin_lock_init(&usbredir->lock);
+	atomic_set(&uhcd->seqnum, 0);
+	spin_lock_init(&uhcd->lock);
 
 	hcd->power_budget = 0; /* no limit */
 	hcd->uses_new_polling = 1;
 
 	/* usbredir_hcd is now ready to be controlled through sysfs */
-	err = sysfs_create_group(&usbredir_dev(usbredir)->kobj, &hub_attr_group);
+	err = sysfs_create_group(&usbredir_dev(uhcd)->kobj, &hub_attr_group);
 	if (err) {
 		pr_err("create sysfs files\n");
 		return err;
@@ -871,17 +869,17 @@ static int usbredir_start(struct usb_hcd *hcd)
 
 static void usbredir_stop(struct usb_hcd *hcd)
 {
-	struct usbredir_hcd *usbredir = hcd_to_usbredir(hcd);
+	struct usbredir_hcd *uhcd = hcd_to_usbredir(hcd);
 	int rhport = 0;
 
 	pr_debug("stop USBREDIR controller\n");
 
 	/* 1. remove the userland interface of usbredir_hcd */
-	sysfs_remove_group(&usbredir_dev(usbredir)->kobj, &hub_attr_group);
+	sysfs_remove_group(&usbredir_dev(uhcd)->kobj, &hub_attr_group);
 
 	/* 2. shutdown all the ports of usbredir_hcd */
 	for (rhport = 0; rhport < USBREDIR_NPORTS; rhport++) {
-		struct usbredir_device *vdev = &usbredir->vdev[rhport];
+		struct usbredir_device *vdev = &uhcd->vdev[rhport];
 
 		usbredir_event_add(vdev, VDEV_EVENT_REMOVED);
 		usbredir_stop_eh(vdev);
@@ -899,38 +897,38 @@ static int get_frame_number(struct usb_hcd *hcd)
 /* FIXME: suspend/resume */
 static int bus_suspend(struct usb_hcd *hcd)
 {
-	struct usbredir_hcd *usbredir = hcd_to_usbredir(hcd);
+	struct usbredir_hcd *uhcd = hcd_to_usbredir(hcd);
 
 	dev_dbg(&hcd->self.root_hub->dev, "%s\n", __func__);
 
-	spin_lock(&usbredir->lock);
+	spin_lock(&uhcd->lock);
 	hcd->state = HC_STATE_SUSPENDED;
-	spin_unlock(&usbredir->lock);
+	spin_unlock(&uhcd->lock);
 
 	return 0;
 }
 
 static int bus_resume(struct usb_hcd *hcd)
 {
-	struct usbredir_hcd *usbredir = hcd_to_usbredir(hcd);
+	struct usbredir_hcd *uhcd = hcd_to_usbredir(hcd);
 	int rc = 0;
 
 	dev_dbg(&hcd->self.root_hub->dev, "%s\n", __func__);
 
-	spin_lock(&usbredir->lock);
+	spin_lock(&uhcd->lock);
 	if (!HCD_HW_ACCESSIBLE(hcd))
 		rc = -ESHUTDOWN;
 	else
 		hcd->state = HC_STATE_RUNNING;
-	spin_unlock(&usbredir->lock);
+	spin_unlock(&uhcd->lock);
 
 	return rc;
 }
 
 #else
 
-#define usbredir_bus_suspend      NULL
-#define usbredir_bus_resume       NULL
+#define bus_suspend      NULL
+#define bus_resume       NULL
 #endif
 
 static struct hc_driver usbredir_hc_driver = {
