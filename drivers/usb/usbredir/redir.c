@@ -71,10 +71,10 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	msg.msg_controllen = 0;
 	msg.msg_flags = MSG_NOSIGNAL;
 
-pr_info("JPW enter read, max %d\n", count);
+pr_debug("JPW enter read, max %d\n", count);
 	rc = kernel_recvmsg(vdev->socket, &msg, &iov, 1, count, MSG_WAITALL);
 	if (rc > 0) {
-pr_info("JPW read %d\n", rc);
+pr_debug("JPW read %d\n", rc);
 		print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, rc);
 	}
 
@@ -93,7 +93,7 @@ static int redir_write(void *priv, uint8_t *data, int count)
 	msg.msg_flags = MSG_NOSIGNAL | MSG_DONTWAIT;
 	iov.iov_base = data;
 	iov.iov_len  = count;
-pr_info("JPW writing %d\n", count);
+pr_debug("JPW writing %d\n", count);
 	rc = kernel_sendmsg(vdev->socket, &msg, &iov, 1, count);
 	if (rc > 0) {
 		print_hex_dump_bytes("redir_write", DUMP_PREFIX_NONE, data, rc);
@@ -159,10 +159,10 @@ static void redir_device_connect(void *priv,
 	// TODO: lock?
 	vdev->connect_header = *device_connect;
 
-	pr_info("  class %2d subclass %2d protocol %2d",
+	pr_debug("  class %2d subclass %2d protocol %2d",
            device_connect->device_class, device_connect->device_subclass,
            device_connect->device_protocol);
-	pr_info("  vendor 0x%04x product %04x\n",
+	pr_debug("  vendor 0x%04x product %04x\n",
            device_connect->vendor_id, device_connect->product_id);
 
 	rh_port_connect(vdev->rhport, convert_speed(device_connect->speed));
@@ -187,7 +187,7 @@ static void redir_interface_info(void *priv,
 	vdev->info_header = *info;
 	// TODO: lock?
 	for (i = 0; i < info->interface_count; i++) {
-		pr_info("interface %d class %2d subclass %2d protocol %2d",
+		pr_debug("interface %d class %2d subclass %2d protocol %2d",
 			info->interface[i], info->interface_class[i],
 			info->interface_subclass[i], info->interface_protocol[i]);
 	}
@@ -207,7 +207,7 @@ static void redir_ep_info(void *priv,
 	vdev->ep_info_header = *ep_info;
 	for (i = 0; i < 32; i++) {
 		if (ep_info->type[i] != usb_redir_type_invalid) {
-			pr_info("endpoint: %02X, type: %d, interval: %d, interface: %d",
+			pr_debug("endpoint: %02X, type: %d, interval: %d, interface: %d",
 				I2EP(i), (int)ep_info->type[i], (int)ep_info->interval[i],
 				(int)ep_info->interface[i]);
 		}
@@ -350,8 +350,8 @@ static void redir_control_packet(void *priv,
 	struct usbredir_device *vdev = (struct usbredir_device *) priv;
 	struct urb *urb;
 
-pr_info("JPW handling control packet response, id %ld\n", (long) id);
-pr_info("data length %d:\n", data_len);
+pr_debug("JPW handling control packet response, id %ld\n", (long) id);
+pr_debug("data length %d:\n", data_len);
 print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 
 	spin_lock(&vdev->priv_lock);
@@ -374,7 +374,7 @@ print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 	urb->status = control_header->status;
 	urb->actual_length = min((u32) data_len, urb->transfer_buffer_length);
 
-pr_info("JPW status %d, u status %d complete %p\n",
+pr_debug("JPW status %d, u status %d complete %p\n",
 	control_header->status, urb->status, urb->complete);
 	if (urb->complete)
 		urb->complete(urb);

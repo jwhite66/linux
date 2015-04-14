@@ -76,7 +76,7 @@ int rx_loop(void *data)
 
 		rc = usbredirparser_do_read(vdev->parser);
 		if (rc != -EAGAIN) {
-			pr_info("connection closed");
+			pr_info("usbredir/rx:%d connection closed", vdev->rhport);
 			usbredir_event_add(vdev, VDEV_EVENT_DOWN);
 			break;
 		}

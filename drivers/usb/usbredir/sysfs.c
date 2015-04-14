@@ -130,7 +130,7 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 	if (sscanf(buf, "%u %255s", &sockfd, devid) != 2)
 		return -EINVAL;
 
-	pr_debug("sockfd(%u) devid(%s)\n", sockfd, devid);
+	pr_debug("attach sockfd(%u) devid(%s)\n", sockfd, devid);
 
 	/* Extract socket from fd. */
 	socket = sockfd_lookup(sockfd, &err);

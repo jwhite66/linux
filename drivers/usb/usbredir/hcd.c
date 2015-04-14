@@ -254,10 +254,8 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	 * NOTE:
 	 * wIndex shows the port number and begins from 1.
 	 */
-	pr_debug("typeReq %x wValue %x wIndex %x\n", typeReq, wValue,
-			  wIndex);
-	if (wIndex > USBREDIR_NPORTS)
-		pr_err("invalid port number %d\n", wIndex);
+	pr_debug("hub_control: typeReq %x wValue %x wIndex %x\n",
+		 typeReq, wValue, wIndex);
 	rhport = ((__u8)(wIndex & 0x00ff)) - 1;
 
 	dum = hcd_to_usbredir(hcd);
@@ -275,6 +273,7 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	case ClearPortFeature:
 		switch (wValue) {
 		case USB_PORT_FEAT_SUSPEND:
+			pr_debug(" ClearPortFeature: USB_PORT_FEAT_SUSPEND\n");
 			if (dum->port_status[rhport] & USB_PORT_STAT_SUSPEND) {
 				/* 20msec signaling */
 				dum->resuming = 1;
@@ -283,14 +282,12 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			}
 			break;
 		case USB_PORT_FEAT_POWER:
-			pr_debug(
-				" ClearPortFeature: USB_PORT_FEAT_POWER\n");
+			pr_debug(" ClearPortFeature: USB_PORT_FEAT_POWER\n");
 			dum->port_status[rhport] = 0;
 			dum->resuming = 0;
 			break;
 		case USB_PORT_FEAT_C_RESET:
-			pr_debug(
-				" ClearPortFeature: USB_PORT_FEAT_C_RESET\n");
+			pr_debug(" ClearPortFeature: USB_PORT_FEAT_C_RESET\n");
 			// TODO - USB 3.0 stuff as well?
 			switch (dum->vdev[rhport].connect_header.speed) {
 			case usb_redir_speed_high:
@@ -305,8 +302,7 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 				break;
 			}
 		default:
-			pr_debug(" ClearPortFeature: default %x\n",
-					  wValue);
+			pr_debug(" ClearPortFeature: default %x\n", wValue);
 			dum->port_status[rhport] &= ~(1 << wValue);
 			break;
 		}
@@ -326,6 +322,8 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			retval = -EPIPE;
 		}
 
+		/* TODO - read these comments and delete them or 
+		 *   make sure JPW understands them */
 		/* we do not care about resume. */
 
 		/* whoever resets or resumes must GetPortStatus to
@@ -391,8 +389,7 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 
 			/* FALLTHROUGH */
 		default:
-			pr_debug(" SetPortFeature: default %d\n",
-					  wValue);
+			pr_debug(" SetPortFeature: default %d\n", wValue);
 			dum->port_status[rhport] |= (1 << wValue);
 			break;
 		}
@@ -405,13 +402,11 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		retval = -EPIPE;
 	}
 
-	pr_debug("port %d\n", rhport);
 	/* Only dump valid port status */
 	if (rhport >= 0) {
 		dump_port_status_diff(prev_port_status[rhport],
 				      dum->port_status[rhport]);
 	}
-	pr_debug(" bye\n");
 
 	spin_unlock(&dum->lock);
 
@@ -585,7 +580,7 @@ static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 	struct usbredir_priv *priv;
 	struct usbredir_device *vdev;
 
-	pr_info("enter dequeue urb %p\n", urb);
+	pr_debug("enter dequeue urb %p\n", urb);
 dump_stack(); // JPW
 
 	spin_lock(&the_controller->lock);
@@ -652,12 +647,8 @@ dump_stack(); // JPW
 		}
 
 		unlink->seqnum = atomic_inc_return(&the_controller->seqnum);
-		if (unlink->seqnum == 0xffff)
-			pr_info("seqnum max\n");
 
 		unlink->unlink_seqnum = priv->seqnum;
-
-		pr_info("device %p seems to be still connected\n", vdev);
 
 		/* send cmd_unlink and try to cancel the pending URB in the
 		 * peer */
@@ -669,7 +660,7 @@ dump_stack(); // JPW
 
 	spin_unlock(&the_controller->lock);
 
-	pr_debug("leave urb_dequeue\n");
+	pr_debug("leave dequeue urb %p\n", urb);
 	return 0;
 }
 
@@ -681,7 +672,7 @@ static void usbredir_device_unlink_cleanup(struct usbredir_device *vdev)
 	spin_lock(&vdev->priv_lock);
 
 	list_for_each_entry_safe(unlink, tmp, &vdev->unlink_tx, list) {
-		pr_info("unlink cleanup tx %lu\n", unlink->unlink_seqnum);
+		pr_debug("unlink cleanup tx %lu\n", unlink->unlink_seqnum);
 		list_del(&unlink->list);
 		kfree(unlink);
 	}
@@ -693,7 +684,7 @@ static void usbredir_device_unlink_cleanup(struct usbredir_device *vdev)
 			list);
 
 		/* give back URB of unanswered unlink request */
-		pr_info("unlink cleanup rx %lu\n", unlink->unlink_seqnum);
+		pr_debug("unlink cleanup rx %lu\n", unlink->unlink_seqnum);
 
 		urb = pickup_urb_and_free_priv(vdev, unlink->unlink_seqnum);
 		if (!urb) {
@@ -747,14 +738,12 @@ static void usbredir_shutdown_connection(struct usbredir_device *vdev)
 		kthread_stop(vdev->tx);
 		vdev->tx = NULL;
 	}
-	pr_info("stop threads\n");
 
 	/* active connection is closed */
 	if (vdev->socket) {
 		sockfd_put(vdev->socket);
 		vdev->socket = NULL;
 	}
-	pr_info("release socket\n");
 
 	usbredir_device_unlink_cleanup(vdev);
 
@@ -842,8 +831,6 @@ static int usbredir_start(struct usb_hcd *hcd)
 	int rhport;
 	int err = 0;
 
-	pr_debug("enter usbredir_start\n");
-
 	/* initialize private data of usb_hcd */
 
 	for (rhport = 0; rhport < USBREDIR_NPORTS; rhport++) {
@@ -873,8 +860,6 @@ static void usbredir_stop(struct usb_hcd *hcd)
 	struct usbredir_hcd *uhcd = hcd_to_usbredir(hcd);
 	int rhport = 0;
 
-	pr_debug("stop USBREDIR controller\n");
-
 	/* 1. remove the userland interface of usbredir_hcd */
 	sysfs_remove_group(&usbredir_dev(uhcd)->kobj, &hub_attr_group);
 
@@ -889,7 +874,7 @@ static void usbredir_stop(struct usb_hcd *hcd)
 
 static int get_frame_number(struct usb_hcd *hcd)
 {
-	pr_err("Not yet implemented\n"); // TODO
+	pr_err("get_frame_number: Not yet implemented\n"); // TODO
 	return 0;
 }
 
@@ -958,13 +943,14 @@ static int usbredir_hcd_probe(struct platform_device *pdev)
 	struct usb_hcd		*hcd;
 	int			ret;
 
-	pr_debug("name %s id %d\n", pdev->name, pdev->id);
+	pr_debug("probe name %s id %d\n", pdev->name, pdev->id);
 
 	/*
 	 * Allocate and initialize hcd.
 	 * Our private data is also allocated automatically.
 	 */
-	hcd = usb_create_hcd(&usbredir_hc_driver, &pdev->dev, dev_name(&pdev->dev));
+	hcd = usb_create_hcd(&usbredir_hc_driver, &pdev->dev,
+			     dev_name(&pdev->dev));
 	if (!hcd) {
 		pr_err("create hcd failed\n");
 		return -ENOMEM;
@@ -986,7 +972,6 @@ static int usbredir_hcd_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	pr_debug("bye\n");
 	return 0;
 }
 

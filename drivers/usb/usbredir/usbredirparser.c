@@ -980,7 +980,7 @@ int usbredirparser_do_read(struct usbredirparser *parser_pub)
                 type_header_len =
                     usbredirparser_get_type_header_len(parser_pub,
                                                        parser->header.type, 0);
-pr_info("JPW got type %u\n", parser->header.type);
+pr_debug("JPW got type %u\n", parser->header.type);
                 if (type_header_len < 0) {
                     ERROR("error invalid usb-redir packet type: %u",
                           parser->header.type);

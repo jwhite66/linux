@@ -24,8 +24,6 @@
 
 static int event_handler(struct usbredir_device *vdev)
 {
-	pr_debug("enter\n");
-
 	/*
 	 * Events are handled by only this thread.
 	 */
@@ -69,8 +67,6 @@ static int event_handler_loop(void *data)
 		wait_event_interruptible(vdev->eh_waitq,
 					 usbredir_event_happened(vdev) ||
 					 kthread_should_stop());
-		pr_debug("wakeup\n");
-
 		if (event_handler(vdev) < 0)
 			break;
 	}

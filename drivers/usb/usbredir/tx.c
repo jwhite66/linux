@@ -49,14 +49,14 @@ static int send_cmd_submit(struct usbredir_device *vdev)
 		struct urb *urb = priv->urb;
 		__u8 type = usb_pipetype(urb->pipe);
 
-		pr_info("JPW sez urb: [pipe %x|type %d|stream_id %u|status %d|",
+		pr_debug("JPW sez urb: [pipe %x|type %d|stream_id %u|status %d|",
 			urb->pipe, type, urb->stream_id, urb->status);
-		pr_info("tflags 0x%x|mapped sgs %d|num_sgs %d|tbuflen %u|",
+		pr_debug("tflags 0x%x|mapped sgs %d|num_sgs %d|tbuflen %u|",
 			urb->transfer_flags, urb->num_mapped_sgs, urb->num_sgs,
 			urb->transfer_buffer_length);
-		pr_info("complete %p|", urb->complete);
-		pr_info("pipedevice %x|", usb_pipedevice(urb->pipe));
-		pr_info("act len %u|st frame %d|num pack %d|int %d|err %d]\n",
+		pr_debug("complete %p|", urb->complete);
+		pr_debug("pipedevice %x|", usb_pipedevice(urb->pipe));
+		pr_debug("act len %u|st frame %d|num pack %d|int %d|err %d]\n",
 			urb->actual_length, urb->start_frame,
 			urb->number_of_packets, urb->interval,
 			urb->error_count);
@@ -66,7 +66,7 @@ static int send_cmd_submit(struct usbredir_device *vdev)
 				(struct usb_ctrlrequest *) urb->setup_packet;
 			struct usb_redir_control_packet_header ctrl;
 
-			pr_info("control request:\n");
+			pr_debug("control request:\n");
 			print_hex_dump_bytes("", DUMP_PREFIX_NONE,
 				     ctrlreq, sizeof(*ctrlreq));
 
@@ -116,7 +116,7 @@ static int send_cmd_unlink(struct usbredir_device *vdev)
 	size_t total_size = 0;
 
 	while ((unlink = dequeue_from_unlink_tx(vdev)) != NULL) {
-		pr_info("unlink request of seqnum %ld, unlink seqnum %ld\n",
+		pr_debug("unlink request of seqnum %ld, unlink seqnum %ld\n",
 			unlink->seqnum, unlink->unlink_seqnum);
 	}
 
