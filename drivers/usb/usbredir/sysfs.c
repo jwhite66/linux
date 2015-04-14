@@ -39,7 +39,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr,
 	spin_lock(&the_controller->lock);
 
 	out += sprintf(out,
-		       "prt sta spd %30.30s %16s local_busid\n",
+		       "prt sta spd %40.40s %16s busid\n",
 		       "devid", "socket");
 	for (i = 0; i < USBREDIR_NPORTS; i++) {
 		vdev = port_to_vdev(i);
@@ -53,7 +53,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr,
 			out += sprintf(out, "%s", dev_name(&vdev->udev->dev));
 
 		} else {
-			out += sprintf(out, "000 ------------------------------- 0000000000000000 0-0");
+			out += sprintf(out, "000 ---------------------------------------- 0000000000000000 0-0");
 		}
 
 		out += sprintf(out, "\n");
