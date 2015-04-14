@@ -168,8 +168,8 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 
 	vdev->parser = redir_parser_init(vdev);
 
-	vdev->rx = kthread_get_run(vhci_rx_loop, vdev, "vhci_rx");
-	vdev->tx = kthread_get_run(vhci_tx_loop, vdev, "vhci_tx");
+	vdev->rx = kthread_get_run(rx_loop, vdev, "rx_loop");
+	vdev->tx = kthread_get_run(tx_loop, vdev, "tx_loop");
 
 	spin_unlock(&vdev->lock);
 	spin_unlock(&the_controller->lock);

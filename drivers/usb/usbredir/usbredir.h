@@ -161,16 +161,25 @@ struct usbredir_hcd {
 extern struct usbredir_hcd *the_controller;
 extern const struct attribute_group hub_attr_group;
 
-/* usbredir.c */
+/* hcd .c */
 void rh_port_connect(int rhport, enum usb_device_speed speed);
 int id_to_port(const char *devid);
 
-/* vhci_rx.c */
+/* rx.c */
 struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, __u32 seqnum);
-int vhci_rx_loop(void *data);
+int rx_loop(void *data);
 
-/* vhci_tx.c */
-int vhci_tx_loop(void *data);
+/* tx.c */
+int tx_loop(void *data);
+
+/* event.c */
+int usbredir_start_eh(struct usbredir_device *ud);
+void usbredir_stop_eh(struct usbredir_device *ud);
+void usbredir_event_add(struct usbredir_device *ud, unsigned long event);
+int usbredir_event_happened(struct usbredir_device *ud);
+
+/* redir.c */
+struct usbredirparser * redir_parser_init(void *priv);
 
 static inline struct usbredir_device *port_to_vdev(__u32 port)
 {
@@ -191,15 +200,6 @@ static inline struct device *usbredir_dev(struct usbredir_hcd *usbredir)
 {
 	return usbredir_to_hcd(usbredir)->self.controller;
 }
-
-/* event.c */
-int usbredir_start_eh(struct usbredir_device *ud);
-void usbredir_stop_eh(struct usbredir_device *ud);
-void usbredir_event_add(struct usbredir_device *ud, unsigned long event);
-int usbredir_event_happened(struct usbredir_device *ud);
-
-/* redir.c */
-struct usbredirparser * redir_parser_init(void *priv);
 
 
 #endif /* __USBIP_USBREDIR_H */

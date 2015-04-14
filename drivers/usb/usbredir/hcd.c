@@ -582,52 +582,6 @@ no_need_unlink:
 	return ret;
 }
 
-/*
- * vhci_rx gives back the urb after receiving the reply of the urb.  If an
- * unlink pdu is sent or not, vhci_rx receives a normal return pdu and gives
- * back its urb. For the driver unlinking the urb, the content of the urb is
- * not important, but the calling to its completion handler is important; the
- * completion of unlinking is notified by the completion handler.
- *
- *
- * CLIENT SIDE
- *
- * - When usbredir_hcd receives RET_SUBMIT,
- *
- *	- case 1a). the urb of the pdu is not unlinking.
- *		- normal case
- *		=> just give back the urb
- *
- *	- case 1b). the urb of the pdu is unlinking.
- *		- usbip.ko will return a reply of the unlinking request.
- *		=> give back the urb now and go to case 2b).
- *
- * - When usbredir_hcd receives RET_UNLINK,
- *
- *	- case 2a). a submit request is still pending in usbredir_hcd.
- *		- urb was really pending in usbip.ko and urb_unlink_urb() was
- *		  completed there.
- *		=> free a pending submit request
- *		=> notify unlink completeness by giving back the urb
- *
- *	- case 2b). a submit request is *not* pending in usbredir_hcd.
- *		- urb was already given back to the core driver.
- *		=> do not give back the urb
- *
- *
- * SERVER SIDE
- *
- * - When usbip receives CMD_UNLINK,
- *
- *	- case 3a). the urb of the unlink request is now in submission.
- *		=> do usb_unlink_urb().
- *		=> after the unlink is completed, send RET_UNLINK.
- *
- *	- case 3b). the urb of the unlink request is not in submission.
- *		- may be already completed or never be received
- *		=> send RET_UNLINK
- *
- */
 static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 {
 	struct usbredir_priv *priv;
@@ -641,7 +595,7 @@ dump_stack(); // JPW
 	priv = urb->hcpriv;
 	if (!priv) {
 		/* URB was never linked! or will be soon given back by
-		 * vhci_rx. */
+		 * rx_loop. */
 		spin_unlock(&the_controller->lock);
 		return 0;
 	}
@@ -672,7 +626,7 @@ dump_stack(); // JPW
 
 		/*
 		 * If tcp connection is alive, we have sent CMD_UNLINK.
-		 * vhci_rx will receive RET_UNLINK and give back the URB.
+		 * rx_loop will receive RET_UNLINK and give back the URB.
 		 * Otherwise, we give back it here.
 		 */
 		pr_info("gives back urb %p\n", urb);
@@ -823,7 +777,7 @@ static void usbredir_shutdown_connection(struct usbredir_device *vdev)
 	 * gives back pushed urbs and frees their private data by request of
 	 * the cleanup function of a USB driver. When unlinking a urb with an
 	 * active connection, usbredir_dequeue() does not give back the urb which
-	 * is actually given back by vhci_rx after receiving its return pdu.
+	 * is actually given back by rx_loop after receiving its return pdu.
 	 *
 	 */
 	rh_port_disconnect(vdev->rhport);

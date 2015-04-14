@@ -124,7 +124,7 @@ static int send_cmd_unlink(struct usbredir_device *vdev)
 }
 
 
-int vhci_tx_loop(void *data)
+int tx_loop(void *data)
 {
 	struct usbredir_device *vdev = data;
 

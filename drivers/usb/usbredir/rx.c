@@ -65,7 +65,7 @@ struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, __u32 seqnum)
 	return urb;
 }
 
-int vhci_rx_loop(void *data)
+int rx_loop(void *data)
 {
 	struct usbredir_device *vdev = data;
 	int rc;
