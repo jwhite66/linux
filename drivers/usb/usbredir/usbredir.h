@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 based on work by
+ * Copyright (C) 2015 Jeremy White based on work by
  * Copyright (C) 2003-2008 Takahiro Hirofuchi
  *
  * This is free software; you can redistribute it and/or modify
@@ -44,14 +44,8 @@
 /* event handler */
 #define USBREDIR_EH_SHUTDOWN	(1 << 0)
 #define USBREDIR_EH_BYE		(1 << 1)
-#define USBREDIR_EH_RESET		(1 << 2)
+#define USBREDIR_EH_RESET	(1 << 2)
 #define USBREDIR_EH_UNUSABLE	(1 << 3)
-
-#define SDEV_EVENT_REMOVED   (USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET | USBREDIR_EH_BYE)
-#define	SDEV_EVENT_DOWN		(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET)
-#define	SDEV_EVENT_ERROR_TCP	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET)
-#define	SDEV_EVENT_ERROR_SUBMIT	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET)
-#define	SDEV_EVENT_ERROR_MALLOC	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_UNUSABLE)
 
 #define	VDEV_EVENT_REMOVED	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_BYE)
 #define	VDEV_EVENT_DOWN		(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET)
@@ -59,19 +53,13 @@
 #define	VDEV_EVENT_ERROR_MALLOC	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_UNUSABLE)
 
 /* JPW TODO - This should probably be over in include/uapi/linux */
-/* usbredir device status - exported in usbip device sysfs status */
+/* usbredir device status - exported in device sysfs status */
 enum usbredir_device_status {
-	/* sdev is available. */
-	SDEV_ST_AVAILABLE = 0x01,
-	/* sdev is now used. */
-	SDEV_ST_USED,
-	/* sdev is unusable because of a fatal error. */
-	SDEV_ST_ERROR,
-
 	/* vdev does not connect a remote device. */
 	VDEV_ST_NULL,
 	/* vdev is used, but the USB address is not assigned yet */
 	VDEV_ST_NOTASSIGNED,
+	/* vdev is used */
 	VDEV_ST_USED,
 	VDEV_ST_ERROR
 };
@@ -79,9 +67,10 @@ enum usbredir_device_status {
 struct usbredir_device {
 	struct usb_device *udev;
 
-	enum usbredir_device_status status;
-	/* lock for status */
+	// TODO - understand when/why to use locks, and follow that rule
 	spinlock_t lock;
+
+	enum usbredir_device_status status;
 
 	struct socket *socket;
         struct usbredirparser *parser;
@@ -104,6 +93,7 @@ struct usbredir_device {
 	 */
 	char *devid;
 
+	/* Store information transmitted by the remote side */
 	struct usb_redir_device_connect_header connect_header;
 	struct usb_redir_interface_info_header info_header;
 	struct usb_redir_ep_info_header ep_info_header;
@@ -115,6 +105,7 @@ struct usbredir_device {
 	spinlock_t priv_lock;
 
 	/* usbredir_priv is linked to one of them. */
+	// TODO - rename these?
 	struct list_head priv_tx;
 	struct list_head priv_rx;
 
@@ -209,7 +200,6 @@ int usbredir_event_happened(struct usbredir_device *ud);
 
 /* redir.c */
 struct usbredirparser * redir_parser_init(void *priv);
-
 
 
 #endif /* __USBIP_USBREDIR_H */

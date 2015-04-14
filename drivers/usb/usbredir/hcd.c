@@ -33,17 +33,6 @@
 #define DRIVER_DESC "USBREDIR Host Controller Driver"
 #define DRIVER_VERSION "1.0.0."
 
-/*
- * TODO
- *	- update root hub emulation
- *	- move the emulation code to userland ?
- *		porting to other operating systems
- *		minimize kernel code
- *	- add suspend/resume code
- *	- clean up everything
- */
-
-/* See usb gadget dummy hcd */
 
 static int hub_status(struct usb_hcd *hcd, char *buff);
 static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
@@ -237,9 +226,11 @@ pr_debug("JPW hub_status reports changed %d, retval %d\n", changed, retval);
 	return changed ? retval : 0;
 }
 
+
 static inline void hub_descriptor(struct usb_hub_descriptor *desc)
 {
 	memset(desc, 0, sizeof(*desc));
+// TODO - where do these magic numbers come from?
 	desc->bDescriptorType = 0x29;
 	desc->bDescLength = 9;
 	desc->wHubCharacteristics = __constant_cpu_to_le16(
@@ -302,6 +293,7 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		case USB_PORT_FEAT_C_RESET:
 			pr_debug(
 				" ClearPortFeature: USB_PORT_FEAT_C_RESET\n");
+			// TODO - USB 3.0 stuff as well?
 			switch (dum->vdev[rhport].connect_header.speed) {
 			case usb_redir_speed_high:
 				dum->port_status[rhport] |=
@@ -484,7 +476,7 @@ static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 
 	pr_debug("urb_enqueue: enter, usb_hcd %p urb %p mem_flags %d\n",
 			  hcd, urb, mem_flags);
-dump_stack(); // JPW
+dump_stack(); // JPW TODO
 
 	/* patch to usb_sg_init() is in 2.5.60 */
 	BUG_ON(!urb->transfer_buffer && urb->transfer_buffer_length);
@@ -882,6 +874,7 @@ static void usbredir_device_init(struct usbredir_device *vdev)
 
 	init_waitqueue_head(&vdev->waitq_tx);
 
+	// TODO - why callbacks?  Why not just invoke directly?
 	vdev->eh_ops.shutdown = usbredir_shutdown_connection;
 	vdev->eh_ops.reset = usbredir_device_reset;
 	vdev->eh_ops.unusable = usbredir_device_unusable;
@@ -943,7 +936,7 @@ static void usbredir_stop(struct usb_hcd *hcd)
 
 static int get_frame_number(struct usb_hcd *hcd)
 {
-	pr_err("Not yet implemented\n");
+	pr_err("Not yet implemented\n"); // TODO
 	return 0;
 }
 
@@ -1129,7 +1122,7 @@ static struct platform_driver usbredir_driver = {
 };
 
 /*
- * The USBREDIR 'device' is 'virtual'; not a real plug&play hardware.
+ * The USBREDIR 'device' is 'virtual'; not real plug&play hardware.
  * We need to add this virtual device as a platform device arbitrarily:
  *	1. platform_device_register()
  */
