@@ -350,10 +350,6 @@ static void redir_control_packet(void *priv,
 	struct usbredir_device *vdev = (struct usbredir_device *) priv;
 	struct urb *urb;
 
-pr_debug("JPW handling control packet response, id %ld\n", (long) id);
-pr_debug("data length %d:\n", data_len);
-print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
-
 	spin_lock(&vdev->priv_lock);
 	urb = pickup_urb_and_free_priv(vdev, id);
 	spin_unlock(&vdev->priv_lock);
@@ -363,19 +359,18 @@ print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 		return;
 	}
 
-	// TODO - handle more than this flavor...
-	if (urb->transfer_buffer) {
-		memcpy(urb->transfer_buffer, data,
-		       min((u32) data_len, urb->transfer_buffer_length));
-		// TODO - map statii correctly
-		urb->status = min((u32) data_len, urb->transfer_buffer_length);
-	}
+pr_debug("JPW handling control packet response, id %ld\n", (long) id);
+pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
+print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
+
 	// TODO - map statii correctly
 	urb->status = control_header->status;
 	urb->actual_length = min((u32) data_len, urb->transfer_buffer_length);
 
-pr_debug("JPW status %d, u status %d complete %p\n",
-	control_header->status, urb->status, urb->complete);
+	// TODO - handle more than this flavor...
+	if (urb->transfer_buffer)
+		memcpy(urb->transfer_buffer, data, urb->actual_length);
+
 	if (urb->complete)
 		urb->complete(urb);
 

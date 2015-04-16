@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) 2015 Jeremy White based on work by
  * Copyright (C) 2003-2008 Takahiro Hirofuchi
  *
  * This is free software; you can redistribute it and/or modify
@@ -116,7 +117,7 @@ static int send_cmd_unlink(struct usbredir_device *vdev)
 	size_t total_size = 0;
 
 	while ((unlink = dequeue_from_unlink_tx(vdev)) != NULL) {
-		pr_debug("unlink request of seqnum %ld, unlink seqnum %ld\n",
+		pr_debug("unimplemented: unlink request of seqnum %ld, unlink seqnum %ld\n",
 			unlink->seqnum, unlink->unlink_seqnum);
 	}
 

@@ -376,14 +376,8 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		case USB_PORT_FEAT_RESET:
 			pr_debug(
 				" SetPortFeature: USB_PORT_FEAT_RESET\n");
-			/* if it's already running, disconnect first */
-			if (dum->port_status[rhport] & USB_PORT_STAT_ENABLE) {
-				dum->port_status[rhport] &=
-					~(USB_PORT_STAT_ENABLE |
-					  USB_PORT_STAT_LOW_SPEED |
-					  USB_PORT_STAT_HIGH_SPEED);
-				/* FIXME test that code path! */
-			}
+			dum->port_status[rhport] &= ~USB_PORT_STAT_ENABLE;
+
 			/* 50msec reset signaling */
 			dum->re_timeout = jiffies + msecs_to_jiffies(50);
 
@@ -469,8 +463,6 @@ static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 
 	pr_debug("urb_enqueue: enter, usb_hcd %p urb %p mem_flags %d\n",
 			  hcd, urb, mem_flags);
-dump_stack(); // JPW TODO
-
 	/* patch to usb_sg_init() is in 2.5.60 */
 	BUG_ON(!urb->transfer_buffer && urb->transfer_buffer_length);
 
@@ -541,6 +533,8 @@ dump_stack(); // JPW TODO
 			goto no_need_xmit;
 
 		case USB_REQ_GET_DESCRIPTOR:
+			pr_debug("Requesting descriptor; wValue %x\n",
+				 ctrlreq->wValue);
 			if (ctrlreq->wValue == cpu_to_le16(USB_DT_DEVICE << 8))
 				pr_debug(
 					"Not yet?:Get_Descriptor to device 0 (get max pipe size)\n");
@@ -581,7 +575,6 @@ static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 	struct usbredir_device *vdev;
 
 	pr_debug("enter dequeue urb %p\n", urb);
-dump_stack(); // JPW
 
 	spin_lock(&the_controller->lock);
 
@@ -789,6 +782,7 @@ static void usbredir_device_reset(struct usbredir_device *vdev)
 		sockfd_put(vdev->socket);
 		vdev->socket = NULL;
 	}
+	// TODO - clean up parser and threads?
 	vdev->status = VDEV_ST_NULL;
 
 	spin_unlock(&vdev->lock);
