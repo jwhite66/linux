@@ -371,9 +371,6 @@ print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 	if (urb->transfer_buffer)
 		memcpy(urb->transfer_buffer, data, urb->actual_length);
 
-	if (urb->complete)
-		urb->complete(urb);
-
 	spin_lock(&the_controller->lock);
 	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(the_controller), urb);
 	spin_unlock(&the_controller->lock);
