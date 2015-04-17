@@ -23,7 +23,7 @@
 
 #include "usbredir.h"
 
-static struct usbredir_priv *dequeue_from_priv_tx(struct usbredir_device *vdev)
+static struct usbredir_priv *get_next_cmd(struct usbredir_device *vdev)
 {
 	struct usbredir_priv *priv, *tmp;
 
@@ -40,17 +40,17 @@ static struct usbredir_priv *dequeue_from_priv_tx(struct usbredir_device *vdev)
 	return NULL;
 }
 
-static int send_cmd_submit(struct usbredir_device *vdev)
+static int send_cmd(struct usbredir_device *vdev)
 {
 	struct usbredir_priv *priv = NULL;
 
 	size_t total_size = 0;
 
-	while ((priv = dequeue_from_priv_tx(vdev)) != NULL) {
+	while ((priv = get_next_cmd(vdev)) != NULL) {
 		struct urb *urb = priv->urb;
 		__u8 type = usb_pipetype(urb->pipe);
 
-		pr_debug("JPW sez urb: [pipe %x|type %d|stream_id %u|status %d|",
+		pr_debug("JPW urb: [pipe %x|type %d|stream_id %u|status %d|",
 			urb->pipe, type, urb->stream_id, urb->status);
 		pr_debug("tflags 0x%x|mapped sgs %d|num_sgs %d|tbuflen %u|",
 			urb->transfer_flags, urb->num_mapped_sgs, urb->num_sgs,
@@ -93,7 +93,7 @@ static int send_cmd_submit(struct usbredir_device *vdev)
 	return total_size;
 }
 
-static struct usbredir_unlink *dequeue_from_unlink_tx(struct usbredir_device *vdev)
+static struct usbredir_unlink *get_next_unlink(struct usbredir_device *vdev)
 {
 	struct usbredir_unlink *unlink, *tmp;
 
@@ -110,17 +110,22 @@ static struct usbredir_unlink *dequeue_from_unlink_tx(struct usbredir_device *vd
 	return NULL;
 }
 
-static int send_cmd_unlink(struct usbredir_device *vdev)
+static int send_unlink(struct usbredir_device *vdev)
 {
 	struct usbredir_unlink *unlink = NULL;
 
 	size_t total_size = 0;
 
-	while ((unlink = dequeue_from_unlink_tx(vdev)) != NULL) {
-		pr_debug("partially unimplemented: unlink request of seqnum %ld, unlink seqnum %ld\n",
+	while ((unlink = get_next_unlink(vdev)) != NULL) {
+		pr_debug("partially unimplemented: unlink request of "
+			 "seqnum %ld, unlink seqnum %ld\n",
 			unlink->seqnum, unlink->unlink_seqnum);
 
-		usbredirparser_send_cancel_data_packet(vdev->parser, unlink->unlink_seqnum);
+		// TODO - if the other side never responds, which it may
+		//        not do if the seqnum doesn't match, then we
+		//        never clear this entry.  That's probably not ideal
+		usbredirparser_send_cancel_data_packet(vdev->parser,
+						       unlink->unlink_seqnum);
 	}
 
 	return total_size;
@@ -139,17 +144,17 @@ int tx_loop(void *data)
 			}
 		}
 
-		if (send_cmd_submit(vdev) < 0)
+		if (send_cmd(vdev) < 0)
 			break;
 
-		if (send_cmd_unlink(vdev) < 0)
+		if (send_unlink(vdev) < 0)
 			break;
 
 		wait_event_interruptible(vdev->waitq_tx,
 			 (!list_empty(&vdev->priv_tx) ||
 			  !list_empty(&vdev->unlink_tx) ||
-			  kthread_should_stop()) ||
-			 usbredirparser_has_data_to_write(vdev->parser));
+			  kthread_should_stop() ||
+			 usbredirparser_has_data_to_write(vdev->parser)));
 	}
 
 	return 0;
