@@ -117,8 +117,10 @@ static int send_cmd_unlink(struct usbredir_device *vdev)
 	size_t total_size = 0;
 
 	while ((unlink = dequeue_from_unlink_tx(vdev)) != NULL) {
-		pr_debug("unimplemented: unlink request of seqnum %ld, unlink seqnum %ld\n",
+		pr_debug("partially unimplemented: unlink request of seqnum %ld, unlink seqnum %ld\n",
 			unlink->seqnum, unlink->unlink_seqnum);
+
+		usbredirparser_send_cancel_data_packet(vdev->parser, unlink->unlink_seqnum);
 	}
 
 	return total_size;
