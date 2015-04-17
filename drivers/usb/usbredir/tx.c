@@ -131,6 +131,37 @@ static int send_unlink(struct usbredir_device *vdev)
 	return total_size;
 }
 
+void tx_urb(struct urb *urb)
+{
+	struct usbredir_device *vdev = udev_to_usbredir(urb->dev);
+	struct usbredir_priv *priv;
+
+	if (!vdev) {
+		pr_err("could not get virtual device");
+		return;
+	}
+
+	priv = kzalloc(sizeof(struct usbredir_priv), GFP_ATOMIC);
+	if (!priv) {
+		usbredir_event_add(vdev, VDEV_EVENT_ERROR_MALLOC);
+		return;
+	}
+
+	spin_lock(&vdev->priv_lock);
+
+	priv->seqnum = atomic_inc_return(&the_controller->aseqnum);
+
+	priv->vdev = vdev;
+	priv->urb = urb;
+
+	urb->hcpriv = (void *) priv;
+
+	list_add_tail(&priv->list, &vdev->priv_tx);
+
+	wake_up(&vdev->waitq_tx);
+	spin_unlock(&vdev->priv_lock);
+}
+
 
 int tx_loop(void *data)
 {

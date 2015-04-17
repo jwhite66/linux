@@ -45,7 +45,7 @@ static void usbredir_stop(struct usb_hcd *hcd);
 static int get_frame_number(struct usb_hcd *hcd);
 
 static const char driver_name[] = "usbredir";
-static const char driver_desc[] = "USBREDIR Virtual Host Controller";
+static const char driver_desc[] = DRIVER_DESC;
 
 struct usbredir_hcd *the_controller;
 
@@ -110,6 +110,7 @@ static void dump_port_status_diff(u32 prev_status, u32 new_status)
 	pr_debug("\n");
 }
 
+// TODO - no thought at all to Super speed stuff...
 void rh_port_connect(int rhport, enum usb_device_speed speed)
 {
 	pr_debug("rh_port_connect %d\n", rhport);
@@ -220,7 +221,6 @@ static int hub_status(struct usb_hcd *hcd, char *buf)
 
 done:
 	spin_unlock(&uhcd->lock);
-pr_debug("JPW hub_status reports changed %d, retval %d\n", changed, retval); 
 	return changed ? retval : 0;
 }
 
@@ -407,51 +407,6 @@ static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	return retval;
 }
 
-static struct usbredir_device *get_vdev(struct usb_device *udev)
-{
-	int i;
-
-	if (!udev)
-		return NULL;
-
-	for (i = 0; i < USBREDIR_NPORTS; i++)
-		if (the_controller->vdev[i].udev == udev)
-			return port_to_vdev(i);
-
-	return NULL;
-}
-
-static void usbredir_tx_urb(struct urb *urb)
-{
-	struct usbredir_device *vdev = get_vdev(urb->dev);
-	struct usbredir_priv *priv;
-
-	if (!vdev) {
-		pr_err("could not get virtual device");
-		return;
-	}
-
-	priv = kzalloc(sizeof(struct usbredir_priv), GFP_ATOMIC);
-	if (!priv) {
-		usbredir_event_add(vdev, VDEV_EVENT_ERROR_MALLOC);
-		return;
-	}
-
-	spin_lock(&vdev->priv_lock);
-
-	priv->seqnum = atomic_inc_return(&the_controller->aseqnum);
-
-	priv->vdev = vdev;
-	priv->urb = urb;
-
-	urb->hcpriv = (void *) priv;
-
-	list_add_tail(&priv->list, &vdev->priv_tx);
-
-	wake_up(&vdev->waitq_tx);
-	spin_unlock(&vdev->priv_lock);
-}
-
 static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 			    gfp_t mem_flags)
 {
@@ -554,7 +509,7 @@ static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 	}
 
 out:
-	usbredir_tx_urb(urb);
+	tx_urb(urb);
 	spin_unlock(&the_controller->lock);
 
 	return 0;

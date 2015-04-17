@@ -153,6 +153,7 @@ struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, int seqnum);
 int rx_loop(void *data);
 
 /* tx.c */
+void tx_urb(struct urb *urb);
 int tx_loop(void *data);
 
 /* event.c */
@@ -182,6 +183,20 @@ static inline struct usb_hcd *usbredir_to_hcd(struct usbredir_hcd *usbredir)
 static inline struct device *usbredir_dev(struct usbredir_hcd *usbredir)
 {
 	return usbredir_to_hcd(usbredir)->self.controller;
+}
+
+static inline struct usbredir_device *udev_to_usbredir(struct usb_device *udev)
+{
+	int i;
+
+	if (!udev)
+		return NULL;
+
+	for (i = 0; i < USBREDIR_NPORTS; i++)
+		if (the_controller->vdev[i].udev == udev)
+			return &the_controller->vdev[i];
+
+	return NULL;
 }
 
 
