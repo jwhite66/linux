@@ -2,5 +2,10 @@ TODO:
   *  Make a dequeue_urb work correctly.
       - Probably want to send a message, if possible,
         but then really do the dequeue as well
+  *  Why does an rmmod with an active connection hang?
+     -  Seems a side effect of having an outbound urb get 'dropped'
+        That is, at this moment in time, USB_DIR_OUT packets are dropped
+        cdf19e882776680dbe98f98e23825506f61a86fc
+
   *  More than one root hub?  otw, limited to 32 or so connections...
   *  Not just hacking the usbredirparser, but proper patches
