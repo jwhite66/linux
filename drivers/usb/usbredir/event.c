@@ -28,7 +28,7 @@ static int event_handler(struct usbredir_device *vdev)
 	 * Events are handled by only this thread.
 	 */
 	while (usbredir_event_happened(vdev)) {
-		pr_debug("pending event %lx\n", vdev->event);
+		pr_debug("usbredir: pending event %lx\n", vdev->event);
 
 		/*
 		 * NOTE: shutdown must come first.
@@ -102,6 +102,7 @@ void usbredir_event_add(struct usbredir_device *vdev, unsigned long event)
 {
 	unsigned long flags;
 
+	// TODO - why irqsave?
 	spin_lock_irqsave(&vdev->lock, flags);
 	vdev->event |= event;
 	wake_up(&vdev->eh_waitq);
