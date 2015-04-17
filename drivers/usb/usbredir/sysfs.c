@@ -53,7 +53,9 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr,
 			out += sprintf(out, "%s", dev_name(&vdev->udev->dev));
 
 		} else {
-			out += sprintf(out, "000 ---------------------------------------- 0000000000000000 0-0");
+			out += sprintf(out, "000 "
+				"---------------------------------------- "
+				"0000000000000000 0-0");
 		}
 
 		out += sprintf(out, "\n");
