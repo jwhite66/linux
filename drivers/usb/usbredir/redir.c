@@ -95,8 +95,14 @@ static int redir_write(void *priv, uint8_t *data, int count)
 	iov.iov_len  = count;
 pr_debug("JPW writing %d\n", count);
 	rc = kernel_sendmsg(vdev->socket, &msg, &iov, 1, count);
+pr_debug("JPW wrote %d\n", rc);
 	if (rc > 0) {
 		print_hex_dump_bytes("redir_write", DUMP_PREFIX_NONE, data, rc);
+	}
+	if (rc != count) {
+		pr_err("Error %d writing %d bytes\n", rc, count);
+		usbredir_event_add(vdev, VDEV_EVENT_ERROR_TCP);
+		return -1;
 	}
 
 	return rc;
