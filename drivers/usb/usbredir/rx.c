@@ -36,7 +36,8 @@ struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, __u32 seqnum)
 		urb = priv->urb;
 		status = urb->status;
 
-		pr_debug("find urb %p vurb %p seqnum %u\n", urb, priv, seqnum);
+		pr_debug("usbredir: find urb %p vurb %p seqnum %u\n",
+			 urb, priv, seqnum);
 
 		switch (status) {
 		case -ENOENT:
@@ -76,7 +77,8 @@ int rx_loop(void *data)
 
 		rc = usbredirparser_do_read(vdev->parser);
 		if (rc != -EAGAIN) {
-			pr_info("usbredir/rx:%d connection closed", vdev->rhport);
+			pr_info("usbredir/rx:%d connection closed",
+				vdev->rhport);
 			usbredir_event_add(vdev, VDEV_EVENT_DOWN);
 			break;
 		}
