@@ -23,6 +23,8 @@
 
 #include "usbredirparser.h"
 
+#define USBREDIR_MODULE_VERSION	"1.0"
+
 /* event handler */
 #define USBREDIR_EH_SHUTDOWN	(1 << 0)
 #define USBREDIR_EH_BYE		(1 << 1)
@@ -101,7 +103,7 @@ struct usbredir_device {
 
 /* urb->hcpriv, use container_of() */
 struct usbredir_priv {
-	unsigned long seqnum;
+	int seqnum;
 	struct list_head list;
 
 	struct usbredir_device *vdev;
@@ -110,12 +112,12 @@ struct usbredir_priv {
 
 struct usbredir_unlink {
 	/* seqnum of this request */
-	unsigned long seqnum;
+	int seqnum;
 
 	struct list_head list;
 
 	/* seqnum of the unlink target */
-	unsigned long unlink_seqnum;
+	int unlink_seqnum;
 };
 
 /* Number of supported ports. Value has an upperbound of USB_MAXCHILDREN */
@@ -129,7 +131,7 @@ struct usbredir_hcd {
 	unsigned resuming:1;
 	unsigned long re_timeout;
 
-	atomic_t seqnum;
+	atomic_t aseqnum;
 
 	/*
 	 * NOTE:
@@ -147,7 +149,7 @@ void rh_port_connect(int rhport, enum usb_device_speed speed);
 int id_to_port(const char *devid);
 
 /* rx.c */
-struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, __u32 seqnum);
+struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, int seqnum);
 int rx_loop(void *data);
 
 /* tx.c */

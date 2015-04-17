@@ -416,6 +416,7 @@ static void redir_buffered_bulk_packet(void *priv, uint64_t id,
 struct usbredirparser * redir_parser_init(void *priv)
 {
 	struct usbredirparser *parser;
+	char version[40];
 
 	uint32_t caps[USB_REDIR_CAPS_SIZE];
 
@@ -478,8 +479,9 @@ struct usbredirparser * redir_parser_init(void *priv)
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_bulk_receiving);
 #endif
 
-	usbredirparser_init(parser, "XXX TODO VERSION",
-			    caps, USB_REDIR_CAPS_SIZE, 0);
+	sprintf(version, "kmodule v%s. Protocol %x",
+		USBREDIR_MODULE_VERSION, USBREDIR_VERSION);
+	usbredirparser_init(parser, version, caps, USB_REDIR_CAPS_SIZE, 0);
 
 	return parser;
 }

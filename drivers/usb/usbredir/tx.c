@@ -118,7 +118,7 @@ static int send_unlink(struct usbredir_device *vdev)
 
 	while ((unlink = get_next_unlink(vdev)) != NULL) {
 		pr_debug("partially unimplemented: unlink request of "
-			 "seqnum %ld, unlink seqnum %ld\n",
+			 "seqnum %d, unlink seqnum %d\n",
 			unlink->seqnum, unlink->unlink_seqnum);
 
 		// TODO - if the other side never responds, which it may

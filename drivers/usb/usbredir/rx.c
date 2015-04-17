@@ -23,7 +23,7 @@
 #include "usbredir.h"
 
 /* get URB from transmitted urb queue. caller must hold vdev->priv_lock */
-struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, __u32 seqnum)
+struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, int seqnum)
 {
 	struct usbredir_priv *priv, *tmp;
 	struct urb *urb = NULL;

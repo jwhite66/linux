@@ -31,7 +31,7 @@
 
 #define DRIVER_AUTHOR "Jeremy White"
 #define DRIVER_DESC "USBREDIR Host Controller Driver"
-#define DRIVER_VERSION "1.0.0."
+#define DRIVER_VERSION USBREDIR_MODULE_VERSION
 
 
 static int hub_status(struct usb_hcd *hcd, char *buff);
@@ -439,9 +439,7 @@ static void usbredir_tx_urb(struct urb *urb)
 
 	spin_lock(&vdev->priv_lock);
 
-	priv->seqnum = atomic_inc_return(&the_controller->seqnum);
-	if (priv->seqnum == 0xffff)
-		dev_info(&urb->dev->dev, "seqnum max\n");
+	priv->seqnum = atomic_inc_return(&the_controller->aseqnum);
 
 	priv->vdev = vdev;
 	priv->urb = urb;
@@ -639,7 +637,7 @@ static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 			return -ENOMEM;
 		}
 
-		unlink->seqnum = atomic_inc_return(&the_controller->seqnum);
+		unlink->seqnum = atomic_inc_return(&the_controller->aseqnum);
 
 		unlink->unlink_seqnum = priv->seqnum;
 
@@ -665,7 +663,7 @@ static void usbredir_device_unlink_cleanup(struct usbredir_device *vdev)
 	spin_lock(&vdev->priv_lock);
 
 	list_for_each_entry_safe(unlink, tmp, &vdev->unlink_tx, list) {
-		pr_debug("unlink cleanup tx %lu\n", unlink->unlink_seqnum);
+		pr_debug("unlink cleanup tx %d\n", unlink->unlink_seqnum);
 		list_del(&unlink->list);
 		kfree(unlink);
 	}
@@ -677,11 +675,11 @@ static void usbredir_device_unlink_cleanup(struct usbredir_device *vdev)
 			list);
 
 		/* give back URB of unanswered unlink request */
-		pr_debug("unlink cleanup rx %lu\n", unlink->unlink_seqnum);
+		pr_debug("unlink cleanup rx %d\n", unlink->unlink_seqnum);
 
 		urb = pickup_urb_and_free_priv(vdev, unlink->unlink_seqnum);
 		if (!urb) {
-			pr_info("the urb (seqnum %lu) was already given back\n",
+			pr_info("the urb (seqnum %d) was already given back\n",
 				unlink->unlink_seqnum);
 			list_del(&unlink->list);
 			kfree(unlink);
@@ -833,7 +831,7 @@ static int usbredir_start(struct usb_hcd *hcd)
 		usbredir_device_init(vdev, rhport);
 	}
 
-	atomic_set(&uhcd->seqnum, 0);
+	atomic_set(&uhcd->aseqnum, 0);
 	spin_lock_init(&uhcd->lock);
 
 	hcd->power_budget = 0; /* no limit */
