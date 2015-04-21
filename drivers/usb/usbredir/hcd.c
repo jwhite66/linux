@@ -416,8 +416,6 @@ static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 
 	pr_debug("urb_enqueue: enter, usb_hcd %p urb %p mem_flags %d\n",
 			  hcd, urb, mem_flags);
-	/* patch to usb_sg_init() is in 2.5.60 */
-	BUG_ON(!urb->transfer_buffer && urb->transfer_buffer_length);
 
 	spin_lock(&the_controller->lock);
 
@@ -539,6 +537,7 @@ static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		return 0;
 	}
 
+	// TODO - this is not tidy...
 	{
 		int ret = 0;
 
@@ -549,7 +548,7 @@ static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		}
 	}
 
-	 /* send unlink request here? */
+	 /* TODO - understand this comment: 'send unlink request here?' */
 	vdev = priv->vdev;
 
 	if (!vdev->socket) {
@@ -563,11 +562,6 @@ static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
 		spin_unlock(&vdev->priv_lock);
 
-		/*
-		 * If tcp connection is alive, we have sent CMD_UNLINK.
-		 * rx_loop will receive RET_UNLINK and give back the URB.
-		 * Otherwise, we give back it here.
-		 */
 		pr_info("gives back urb %p\n", urb);
 
 		usb_hcd_unlink_urb_from_ep(hcd, urb);
@@ -614,7 +608,7 @@ static void usbredir_device_unlink_cleanup(struct usbredir_device *vdev)
 {
 	struct usbredir_unlink *unlink, *tmp;
 
-	spin_lock(&the_controller->lock);
+	spin_lock(&vdev->uhcd->lock);
 	spin_lock(&vdev->priv_lock);
 
 	list_for_each_entry_safe(unlink, tmp, &vdev->unlink_tx, list) {
@@ -643,24 +637,24 @@ static void usbredir_device_unlink_cleanup(struct usbredir_device *vdev)
 
 		urb->status = -ENODEV;
 
-		usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(the_controller), urb);
+		usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(vdev->uhcd), urb);
 
 		list_del(&unlink->list);
 
 		spin_unlock(&vdev->priv_lock);
-		spin_unlock(&the_controller->lock);
+		spin_unlock(&vdev->uhcd->lock);
 
-		usb_hcd_giveback_urb(usbredir_to_hcd(the_controller), urb,
+		usb_hcd_giveback_urb(usbredir_to_hcd(vdev->uhcd), urb,
 				     urb->status);
 
-		spin_lock(&the_controller->lock);
+		spin_lock(&vdev->uhcd->lock);
 		spin_lock(&vdev->priv_lock);
 
 		kfree(unlink);
 	}
 
 	spin_unlock(&vdev->priv_lock);
-	spin_unlock(&the_controller->lock);
+	spin_unlock(&vdev->uhcd->lock);
 }
 
 /*
@@ -815,7 +809,8 @@ static void usbredir_stop(struct usb_hcd *hcd)
 		struct usbredir_device *vdev = &uhcd->vdev[rhport];
 
 		usbredir_event_add(vdev, VDEV_EVENT_REMOVED);
-		usbredir_stop_eh(vdev);
+		usbredir_stop_eh(vdev); // TODO - shouldn't we let that event do
+					// the stop?
 	}
 }
 
@@ -869,6 +864,7 @@ static struct hc_driver usbredir_hc_driver = {
 	.product_desc	= driver_desc,
 	.hcd_priv_size	= sizeof(struct usbredir_hcd),
 
+	// TODO = what other flags are available and what of USB3?
 	.flags		= HCD_USB2,
 
 	.start		= usbredir_start,
@@ -1018,7 +1014,7 @@ static void the_pdev_release(struct device *dev)
 static struct platform_device the_pdev = {
 	/* should be the same name as driver_name */
 	.name = driver_name,
-	.id = -1,
+	.id = -1, // TODO - this will have to not be -1 when we go general
 	.dev = {
 		.release = the_pdev_release,
 	},

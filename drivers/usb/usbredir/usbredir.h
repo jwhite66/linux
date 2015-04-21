@@ -58,6 +58,7 @@ struct usbredir_device {
 
 	struct socket *socket;
         struct usbredirparser *parser;
+	struct usbredir_hcd *uhcd;
 
 	struct task_struct *rx;
 	struct task_struct *tx;

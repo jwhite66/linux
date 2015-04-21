@@ -177,7 +177,7 @@ void tx_urb(struct urb *urb)
 
 	spin_lock(&vdev->priv_lock);
 
-	priv->seqnum = atomic_inc_return(&the_controller->aseqnum);
+	priv->seqnum = atomic_inc_return(&vdev->uhcd->aseqnum);
 
 	priv->vdev = vdev;
 	priv->urb = urb;

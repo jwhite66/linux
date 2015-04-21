@@ -382,11 +382,11 @@ print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 		urb->actual_length = control_header->length;
 	}
 
-	spin_lock(&the_controller->lock);
-	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(the_controller), urb);
-	spin_unlock(&the_controller->lock);
+	spin_lock(&vdev->uhcd->lock);
+	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(vdev->uhcd), urb);
+	spin_unlock(&vdev->uhcd->lock);
 
-	usb_hcd_giveback_urb(usbredir_to_hcd(the_controller), urb, urb->status);
+	usb_hcd_giveback_urb(usbredir_to_hcd(vdev->uhcd), urb, urb->status);
 }
 
 static void redir_bulk_packet(void *priv,
@@ -428,11 +428,11 @@ print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 	// TODO - what to do with length, stream_id, and length_high
 	// TODO - handle more than this flavor...
 
-	spin_lock(&the_controller->lock);
-	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(the_controller), urb);
-	spin_unlock(&the_controller->lock);
+	spin_lock(&vdev->uhcd->lock);
+	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(vdev->uhcd), urb);
+	spin_unlock(&vdev->uhcd->lock);
 
-	usb_hcd_giveback_urb(usbredir_to_hcd(the_controller), urb, urb->status);
+	usb_hcd_giveback_urb(usbredir_to_hcd(vdev->uhcd), urb, urb->status);
 }
 
 static void redir_iso_packet(void *priv,

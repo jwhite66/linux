@@ -170,6 +170,7 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 	vdev->socket = socket;
 
 	vdev->parser = redir_parser_init(vdev);
+	vdev->uhcd   = the_controller;
 
 	sprintf(pname, "usbredir/rx:%d", vdev->rhport);
 	vdev->rx = kthread_run(rx_loop, vdev, pname);
