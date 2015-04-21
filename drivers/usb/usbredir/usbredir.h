@@ -146,7 +146,7 @@ extern struct usbredir_hcd *the_controller;
 extern const struct attribute_group hub_attr_group;
 
 /* hcd .c */
-void rh_port_connect(int rhport, enum usb_device_speed speed);
+void hcd_connect_port(struct usbredir_device *vdev);
 int id_to_port(const char *devid);
 
 /* rx.c */

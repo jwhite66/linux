@@ -99,30 +99,33 @@ static void dump_port_status_diff(u32 prev_status, u32 new_status)
 	pr_debug("\n");
 }
 
-// TODO - no thought at all to Super speed stuff...
-void rh_port_connect(int rhport, enum usb_device_speed speed)
+
+static u32 speed_to_portflag(enum usb_device_speed speed)
 {
-	pr_debug("rh_port_connect %d\n", rhport);
+	switch(speed) {
+	case usb_redir_speed_low:   return USB_PORT_STAT_LOW_SPEED;
+	case usb_redir_speed_high:  return USB_PORT_STAT_HIGH_SPEED;
 
-	spin_lock(&the_controller->lock);
-
-	the_controller->port_status[rhport] |= USB_PORT_STAT_CONNECTION
-		| (1 << USB_PORT_FEAT_C_CONNECTION);
-
-	switch (speed) {
-	case USB_SPEED_HIGH:
-		the_controller->port_status[rhport] |= USB_PORT_STAT_HIGH_SPEED;
-		break;
-	case USB_SPEED_LOW:
-		the_controller->port_status[rhport] |= USB_PORT_STAT_LOW_SPEED;
-		break;
-	default:
-		break;
+	case usb_redir_speed_full:
+	case usb_redir_speed_super:
+	default:		    return 0;
 	}
+}
 
-	spin_unlock(&the_controller->lock);
+// TODO - no thought at all to Super speed stuff...
+void hcd_connect_port(struct usbredir_device *vdev)
+{
+	u32 *port = vdev->uhcd->port_status + vdev->rhport;
 
-	usb_hcd_poll_rh_status(usbredir_to_hcd(the_controller));
+	pr_debug("hcd_connect_port %s\n", vdev->devid);
+	spin_lock(&vdev->uhcd->lock);
+
+	*port |= USB_PORT_STAT_CONNECTION | (1 << USB_PORT_FEAT_C_CONNECTION);
+	*port |= speed_to_portflag(vdev->connect_header.speed);
+
+	spin_unlock(&vdev->uhcd->lock);
+
+	usb_hcd_poll_rh_status(usbredir_to_hcd(vdev->uhcd));
 }
 
 int id_to_port(const char *devid)

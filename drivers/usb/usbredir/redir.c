@@ -137,17 +137,6 @@ static void redir_hello(void *priv,
 	pr_debug("Hello!\n");
 }
 
-static enum usb_device_speed convert_speed(int speed)
-{
-	switch(speed) {
-	case usb_redir_speed_low:   return USB_SPEED_LOW;
-	case usb_redir_speed_full:  return USB_SPEED_FULL;
-	case usb_redir_speed_high:  return USB_SPEED_HIGH;
-	case usb_redir_speed_super: return USB_SPEED_SUPER;
-	default:		    return USB_SPEED_UNKNOWN;
-	}
-}
-
 static void redir_device_connect(void *priv,
     struct usb_redir_device_connect_header *device_connect)
 {
@@ -161,7 +150,7 @@ static void redir_device_connect(void *priv,
 	pr_debug("  vendor 0x%04x product %04x\n",
            device_connect->vendor_id, device_connect->product_id);
 
-	rh_port_connect(vdev->rhport, convert_speed(device_connect->speed));
+	hcd_connect_port(vdev);
 }
 
 static void redir_device_disconnect(void *priv)
