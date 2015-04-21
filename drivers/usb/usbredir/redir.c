@@ -71,12 +71,7 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	msg.msg_controllen = 0;
 	msg.msg_flags = MSG_NOSIGNAL;
 
-pr_debug("JPW enter read, max %d\n", count);
 	rc = kernel_recvmsg(vdev->socket, &msg, &iov, 1, count, MSG_WAITALL);
-	if (rc > 0) {
-pr_debug("JPW read %d\n", rc);
-		print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, rc);
-	}
 
 	return rc;
 }
@@ -93,12 +88,7 @@ static int redir_write(void *priv, uint8_t *data, int count)
 	msg.msg_flags = MSG_NOSIGNAL | MSG_DONTWAIT;
 	iov.iov_base = data;
 	iov.iov_len  = count;
-pr_debug("JPW writing %d\n", count);
 	rc = kernel_sendmsg(vdev->socket, &msg, &iov, 1, count);
-pr_debug("JPW wrote %d\n", rc);
-	if (rc > 0) {
-		print_hex_dump_bytes("redir_write", DUMP_PREFIX_NONE, data, rc);
-	}
 	if (rc != count) {
 		pr_err("Error %d writing %d bytes\n", rc, count);
 		usbredir_event_add(vdev, VDEV_EVENT_ERROR_TCP);
@@ -367,7 +357,7 @@ static void redir_control_packet(void *priv,
 
 pr_debug("JPW handling control packet response, id %ld\n", (long) id);
 pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
-print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
+//print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 
 	// TODO - handle more than this flavor...
 	// TODO - map statii correctly
@@ -411,7 +401,7 @@ pr_debug("ep %d, status %d, length %d\n", bulk_header->endpoint, bulk_header->st
 pr_debug("stream_id %d, length_high %d\n", bulk_header->stream_id,
 	 bulk_header->length_high);
 pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
-print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
+//print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 
 	// TODO - map statii correctly
 	urb->status = bulk_header->status;

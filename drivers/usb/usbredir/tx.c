@@ -67,10 +67,6 @@ static int send_cmd(struct usbredir_device *vdev)
 				(struct usb_ctrlrequest *) urb->setup_packet;
 			struct usb_redir_control_packet_header ctrl;
 
-			pr_debug("control request:\n");
-			print_hex_dump_bytes("", DUMP_PREFIX_NONE,
-					     ctrlreq, sizeof(*ctrlreq));
-
 			ctrl.endpoint = usb_pipeendpoint(urb->pipe) |
 					usb_pipein(urb->pipe);
 			ctrl.request = ctrlreq->bRequest;
@@ -112,10 +108,6 @@ static int send_cmd(struct usbredir_device *vdev)
 					0 : urb->transfer_buffer_length);
 		}
 
-		if (urb->transfer_buffer_length && urb->transfer_buffer)
-			print_hex_dump_bytes("", DUMP_PREFIX_NONE,
-					     urb->transfer_buffer,
-					     urb->transfer_buffer_length);
 	}
 
 	return total_size;
