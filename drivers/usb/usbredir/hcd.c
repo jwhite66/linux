@@ -33,17 +33,6 @@
 #define DRIVER_DESC "USBREDIR Host Controller Driver"
 #define DRIVER_VERSION USBREDIR_MODULE_VERSION
 
-
-static int hub_status(struct usb_hcd *hcd, char *buff);
-static int hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
-			    u16 wIndex, char *buff, u16 wLength);
-static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
-			    gfp_t mem_flags);
-static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status);
-static int usbredir_start(struct usb_hcd *usbredir_hcd);
-static void usbredir_stop(struct usb_hcd *hcd);
-static int get_frame_number(struct usb_hcd *hcd);
-
 static const char driver_name[] = "usbredir";
 static const char driver_desc[] = DRIVER_DESC;
 
@@ -898,6 +887,7 @@ static int usbredir_hcd_probe(struct platform_device *pdev)
 		pr_err("create hcd failed\n");
 		return -ENOMEM;
 	}
+	// TODO - review if we want to has_tt, and anything like it...
 	hcd->has_tt = 1;
 
 	/* this is private data for usbredir_hcd */

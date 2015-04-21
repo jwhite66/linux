@@ -155,7 +155,7 @@ static void redir_device_connect(void *priv,
 	// TODO: lock?
 	vdev->connect_header = *device_connect;
 
-	pr_debug("  class %2d subclass %2d protocol %2d",
+	pr_debug("  connect: class %2d subclass %2d protocol %2d",
            device_connect->device_class, device_connect->device_subclass,
            device_connect->device_protocol);
 	pr_debug("  vendor 0x%04x product %04x\n",
@@ -502,6 +502,7 @@ struct usbredirparser * redir_parser_init(void *priv)
 	parser->buffered_bulk_packet_func = redir_buffered_bulk_packet;
 
 	memset(caps, 0, sizeof(caps));
+	// TODO - figure out which of these we really can use
 #if defined(USE_ALL_CAPS)
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_bulk_streams);
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_connect_device_version);

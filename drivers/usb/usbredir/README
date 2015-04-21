@@ -1,4 +1,5 @@
 TODO:
+  *  Read and deal with the many TODOs
   *  Make a dequeue_urb work correctly.
       - Probably want to send a message, if possible,
         but then really do the dequeue as well
@@ -9,3 +10,6 @@ TODO:
 
   *  More than one root hub?  otw, limited to 32 or so connections...
   *  Not just hacking the usbredirparser, but proper patches
+  *  Why is the thumb drive read only
+  *  Expose a sysfs attribute and have udev use it
+  *  Turn on more capabilities and watch it go
