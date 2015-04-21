@@ -69,10 +69,10 @@ static int send_cmd(struct usbredir_device *vdev)
 
 			pr_debug("control request:\n");
 			print_hex_dump_bytes("", DUMP_PREFIX_NONE,
-				     ctrlreq, sizeof(*ctrlreq));
+					     ctrlreq, sizeof(*ctrlreq));
 
-			ctrl.endpoint = usb_pipein(urb->pipe) ?
-				USB_DIR_IN : USB_DIR_OUT;
+			ctrl.endpoint = usb_pipeendpoint(urb->pipe) |
+					usb_pipein(urb->pipe);
 			ctrl.request = ctrlreq->bRequest;
 			ctrl.requesttype = ctrlreq->bRequestType;
 			ctrl.status = 0;
@@ -80,8 +80,36 @@ static int send_cmd(struct usbredir_device *vdev)
 			ctrl.index = le16_to_cpu(ctrlreq->wIndex);
 			ctrl.length = le16_to_cpu(ctrlreq->wLength);
 
+			pr_debug("control request to endpoint 0x%x:\n",
+				 ctrl.endpoint);
+
 			usbredirparser_send_control_packet(vdev->parser,
-				priv->seqnum, &ctrl, NULL, 0);
+				priv->seqnum, &ctrl,
+				usb_pipein(urb->pipe) ?
+					NULL : urb->transfer_buffer,
+				usb_pipein(urb->pipe) ?
+					0 : urb->transfer_buffer_length);
+
+		}
+
+		if (type == PIPE_BULK) {
+			struct usb_redir_bulk_packet_header bulk;
+			bulk.endpoint = usb_pipeendpoint(urb->pipe) |
+					usb_pipein(urb->pipe);
+			bulk.status = 0;
+			bulk.length = urb->transfer_buffer_length;
+			bulk.stream_id = urb->stream_id;
+			bulk.length_high = 0;
+
+			pr_debug("bulk request to endpoint 0x%x:\n",
+				 bulk.endpoint);
+
+			usbredirparser_send_bulk_packet(vdev->parser,
+				priv->seqnum, &bulk,
+				usb_pipein(urb->pipe) ?
+					NULL : urb->transfer_buffer,
+				usb_pipein(urb->pipe) ?
+					0 : urb->transfer_buffer_length);
 		}
 
 		if (urb->transfer_buffer_length && urb->transfer_buffer)

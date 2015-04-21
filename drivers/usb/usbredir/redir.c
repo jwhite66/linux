@@ -213,8 +213,8 @@ static void redir_ep_info(void *priv,
 	vdev->ep_info_header = *ep_info;
 	for (i = 0; i < 32; i++) {
 		if (ep_info->type[i] != usb_redir_type_invalid) {
-			pr_debug("endpoint: %02X, type: %d, interval: %d, interface: %d",
-				I2EP(i), (int)ep_info->type[i], (int)ep_info->interval[i],
+			pr_debug("endpoint: i %d, %02X, type: %d, interval: %d, interface: %d",
+				i, I2EP(i), (int)ep_info->type[i], (int)ep_info->interval[i],
 				(int)ep_info->interface[i]);
 		}
 	}
@@ -369,13 +369,18 @@ pr_debug("JPW handling control packet response, id %ld\n", (long) id);
 pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
 print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 
+	// TODO - handle more than this flavor...
 	// TODO - map statii correctly
 	urb->status = control_header->status;
-	urb->actual_length = min((u32) data_len, urb->transfer_buffer_length);
-
-	// TODO - handle more than this flavor...
-	if (urb->transfer_buffer)
-		memcpy(urb->transfer_buffer, data, urb->actual_length);
+	if (usb_pipein(urb->pipe)) {
+		urb->actual_length = min((u32) data_len,
+					 urb->transfer_buffer_length);
+		if (urb->transfer_buffer)
+			memcpy(urb->transfer_buffer, data, urb->actual_length);
+	}
+	else {
+		urb->actual_length = control_header->length;
+	}
 
 	spin_lock(&the_controller->lock);
 	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(the_controller), urb);
@@ -388,7 +393,46 @@ static void redir_bulk_packet(void *priv,
     uint64_t id, struct usb_redir_bulk_packet_header *bulk_header,
     uint8_t *data, int data_len)
 {
-	TODO_IMPLEMENT;
+	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	struct urb *urb;
+
+	spin_lock(&vdev->priv_lock);
+	urb = pickup_urb_and_free_priv(vdev, id);
+	spin_unlock(&vdev->priv_lock);
+	if (!urb) {
+		pr_err("Error: bulk id %lu received with no matching"
+		       " entry.\n",  (unsigned long) id);
+		return;
+	}
+
+pr_debug("JPW handling bulk packet response, id %ld\n", (long) id);
+pr_debug("ep %d, status %d, length %d\n", bulk_header->endpoint, bulk_header->status,
+	 bulk_header->length);
+pr_debug("stream_id %d, length_high %d\n", bulk_header->stream_id,
+	 bulk_header->length_high);
+pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
+print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
+
+	// TODO - map statii correctly
+	urb->status = bulk_header->status;
+	if (usb_pipein(urb->pipe)) {
+		urb->actual_length = min((u32) data_len,
+					 urb->transfer_buffer_length);
+		if (urb->transfer_buffer)
+			memcpy(urb->transfer_buffer, data, urb->actual_length);
+	}
+	else {
+		urb->actual_length = bulk_header->length;
+	}
+
+	// TODO - what to do with length, stream_id, and length_high
+	// TODO - handle more than this flavor...
+
+	spin_lock(&the_controller->lock);
+	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(the_controller), urb);
+	spin_unlock(&the_controller->lock);
+
+	usb_hcd_giveback_urb(usbredir_to_hcd(the_controller), urb, urb->status);
 }
 
 static void redir_iso_packet(void *priv,
