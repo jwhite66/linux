@@ -128,39 +128,41 @@ void hcd_connect_port(struct usbredir_device *vdev)
 	usb_hcd_poll_rh_status(usbredir_to_hcd(vdev->uhcd));
 }
 
-int id_to_port(const char *devid)
+struct usbredir_device *find_devid(struct usbredir_hcd *uhcd, const char *devid)
 {
-	int rhport = -1;
 	int i;
-	struct usbredir_device *vdev;
+	struct usbredir_device *vdev = NULL;
 
-	spin_lock(&the_controller->lock);
+	spin_lock(&uhcd->lock);
 	for (i = 0; i < USBREDIR_NPORTS; i++) {
-		vdev = port_to_vdev(i);
+		vdev = port_to_vdev(uhcd, i);
 		spin_lock(&vdev->lock);
-		if (vdev->devid && strcmp(vdev->devid, devid) == 0)
-			rhport = i;
-		spin_unlock(&vdev->lock);
-		if (rhport >= 0)
+		if (vdev->devid && strcmp(vdev->devid, devid) == 0) {
+			spin_unlock(&vdev->lock);
 			break;
+		}
+		spin_unlock(&vdev->lock);
 	}
-	spin_unlock(&the_controller->lock);
+	spin_unlock(&uhcd->lock);
 
-	return rhport;
+	if (i >= USBREDIR_NPORTS)
+		return NULL;
+
+	return vdev;
 }
 
-static void rh_port_disconnect(int rhport)
+static void rh_port_disconnect(struct usbredir_device *vdev)
 {
-	pr_debug("rh_port_disconnect %d\n", rhport);
+	pr_debug("rh_port_disconnect %s\n", vdev->devid);
 
-	spin_lock(&the_controller->lock);
+	spin_lock(&vdev->uhcd->lock);
 
-	the_controller->port_status[rhport] &= ~USB_PORT_STAT_CONNECTION;
-	the_controller->port_status[rhport] |=
+	vdev->uhcd->port_status[vdev->rhport] &= ~USB_PORT_STAT_CONNECTION;
+	vdev->uhcd->port_status[vdev->rhport] |=
 					(1 << USB_PORT_FEAT_C_CONNECTION);
 
-	spin_unlock(&the_controller->lock);
-	usb_hcd_poll_rh_status(usbredir_to_hcd(the_controller));
+	spin_unlock(&vdev->uhcd->lock);
+	usb_hcd_poll_rh_status(usbredir_to_hcd(vdev->uhcd));
 }
 
 #define PORT_C_MASK				\
@@ -404,20 +406,21 @@ static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 {
 	struct device *dev = &urb->dev->dev;
 	int ret = 0;
+	struct usbredir_hcd *uhcd = hcd_to_usbredir(hcd);
 	struct usbredir_device *vdev;
 
 	pr_debug("urb_enqueue: enter, usb_hcd %p urb %p mem_flags %d\n",
 			  hcd, urb, mem_flags);
 
-	spin_lock(&the_controller->lock);
+	spin_lock(&uhcd->lock);
 
 	if (urb->status != -EINPROGRESS) {
 		dev_err(dev, "URB already unlinked!, status %d\n", urb->status);
-		spin_unlock(&the_controller->lock);
+		spin_unlock(&uhcd->lock);
 		return urb->status;
 	}
 
-	vdev = port_to_vdev(urb->dev->portnum-1);
+	vdev = port_to_vdev(uhcd, urb->dev->portnum-1);
 
 	/* refuse enqueue for dead connection */
 	spin_lock(&vdev->lock);
@@ -425,7 +428,7 @@ static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 	    vdev->status == VDEV_ST_ERROR) {
 		dev_err(dev, "enqueue for inactive port %d\n", vdev->rhport);
 		spin_unlock(&vdev->lock);
-		spin_unlock(&the_controller->lock);
+		spin_unlock(&uhcd->lock);
 		return -ENODEV;
 	}
 	spin_unlock(&vdev->lock);
@@ -500,15 +503,15 @@ static int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 
 out:
 	tx_urb(urb);
-	spin_unlock(&the_controller->lock);
+	spin_unlock(&uhcd->lock);
 
 	return 0;
 
 no_need_xmit:
 	usb_hcd_unlink_urb_from_ep(hcd, urb);
 no_need_unlink:
-	spin_unlock(&the_controller->lock);
-	usb_hcd_giveback_urb(usbredir_to_hcd(the_controller), urb, urb->status);
+	spin_unlock(&uhcd->lock);
+	usb_hcd_giveback_urb(usbredir_to_hcd(uhcd), urb, urb->status);
 	return ret;
 }
 
@@ -699,7 +702,7 @@ static void usbredir_shutdown_connection(struct usbredir_device *vdev)
 	 * is actually given back by rx_loop after receiving its return pdu.
 	 *
 	 */
-	rh_port_disconnect(vdev->rhport);
+	rh_port_disconnect(vdev);
 
 	pr_info("disconnect device\n");
 }

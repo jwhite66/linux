@@ -147,7 +147,8 @@ extern const struct attribute_group hub_attr_group;
 
 /* hcd .c */
 void hcd_connect_port(struct usbredir_device *vdev);
-int id_to_port(const char *devid);
+struct usbredir_device *find_devid(struct usbredir_hcd *uhcd,
+				   const char *devid);
 
 /* rx.c */
 struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, int seqnum);
@@ -166,9 +167,10 @@ int usbredir_event_happened(struct usbredir_device *vdev);
 /* redir.c */
 struct usbredirparser * redir_parser_init(void *priv);
 
-static inline struct usbredir_device *port_to_vdev(__u32 port)
+static inline struct usbredir_device *port_to_vdev(struct usbredir_hcd *uhcd,
+						   __u32 port)
 {
-	return &the_controller->vdev[port];
+	return &uhcd->vdev[port];
 }
 
 static inline struct usbredir_hcd *hcd_to_usbredir(struct usb_hcd *hcd)

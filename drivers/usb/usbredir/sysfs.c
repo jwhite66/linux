@@ -42,7 +42,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr,
 		       "prt sta spd %40.40s %16s busid\n",
 		       "devid", "socket");
 	for (i = 0; i < USBREDIR_NPORTS; i++) {
-		vdev = port_to_vdev(i);
+		vdev = port_to_vdev(the_controller, i);
 		spin_lock(&vdev->lock);
 		out += sprintf(out, "%03u %03u ", i, vdev->status);
 
@@ -72,21 +72,19 @@ static ssize_t store_detach(struct device *dev, struct device_attribute *attr,
 			    const char *buf, size_t count)
 {
 	char devid[256];
-	__u32 rhport;
 	struct usbredir_device *vdev;
 
 	memset(devid, 0, sizeof(devid));
 	if (sscanf(buf, "%255s", devid) != 1)
 		return -EINVAL;
 
-	rhport = id_to_port(devid);
-	if (rhport < 0) {
+	vdev = find_devid(the_controller, devid);
+	if (! vdev) {
 		pr_err("%s: not found\n", devid);
 		return -EINVAL;
 	}
 
 	spin_lock(&the_controller->lock);
-	vdev = port_to_vdev(rhport);
 	spin_lock(&vdev->lock);
 	if (vdev->status == VDEV_ST_NULL) {
 		pr_err("%s: not connected %d\n", devid, vdev->status);
@@ -139,7 +137,7 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 	if (!socket)
 		return -EINVAL;
 
-	if (id_to_port(devid) >= 0) {
+	if (find_devid(the_controller, devid)) {
 		dev_err(dev, "%s: already in use\n", devid);
 		sockfd_put(socket);
 		return -EINVAL;
@@ -147,7 +145,7 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 
 	spin_lock(&the_controller->lock);
 	for (i = 0; i < USBREDIR_NPORTS; i++) {
-		vdev = port_to_vdev(i);
+		vdev = port_to_vdev(the_controller, i);
 		spin_lock(&vdev->lock);
 		if (vdev->status == VDEV_ST_NULL) {
 			rhport = i;
