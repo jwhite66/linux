@@ -883,6 +883,9 @@ static int usbredir_hcd_probe(struct platform_device *pdev)
 
 	pr_debug("probe name %s id %d\n", pdev->name, pdev->id);
 
+
+	/* TODO - compare/contrast with usb_create_shared_hcd */
+
 	/*
 	 * Allocate and initialize hcd.
 	 * Our private data is also allocated automatically.

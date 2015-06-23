@@ -5,12 +5,6 @@ config USBREDIR
           XXX Todo Describe better XXX
 
 	  To compile this as a module, choose M here: the module will
-	  be called usbip-core.
+	  be called usbredir.
 
 	  If unsure, say N.
-
-config USBREDIR_DEBUG
-	bool "Debug messages for USBREDIR"
-	depends on USBREDIR
-	---help---
-	  This enables the debug messages from the USB/IP drivers.
