@@ -4,3 +4,11 @@ This module allows a Linux system to instatiate USB devices
 that are located on a remote device.  The USB data is transferred
 over a socket using the USBREDIR protocol, which is generally
 used in conjunction with the SPICE project.
+
+Temporary debug notes for Jeremy as he builds:
+  * Entry points of note:
+    - We start in hcd.c by registering our driver,
+      and our device
+    - Real action happens in sysfs.c when a store is made
+      - That starts 2 threads; an rx, and a tx
+      - The event thread was started at startup

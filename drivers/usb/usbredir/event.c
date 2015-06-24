@@ -74,7 +74,7 @@ static int event_handler_loop(void *data)
 	return 0;
 }
 
-int usbredir_start_eh(struct usbredir_device *vdev)
+int usbredir_event_start_handler(struct usbredir_device *vdev)
 {
 	char pname[32];
 	init_waitqueue_head(&vdev->eh_waitq);
@@ -90,7 +90,7 @@ int usbredir_start_eh(struct usbredir_device *vdev)
 	return 0;
 }
 
-void usbredir_stop_eh(struct usbredir_device *vdev)
+void usbredir_event_stop_handler(struct usbredir_device *vdev)
 {
 	if (vdev->eh == current)
 		return; /* do not wait for myself */

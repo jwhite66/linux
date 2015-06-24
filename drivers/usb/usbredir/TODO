@@ -1,0 +1,18 @@
+TODO:
+  *  More than one root hub?  otw, limited to 32 or so connections...
+  *  The current crash at module unload is a symptom of having the uhcd
+     be null, which is an artifact of the current approach
+  *  Hmm.  KFP_ATOMIC on our mallocs may be better than _KERNEL...
+  *  Read and deal with the many TODOs
+  *  Make a dequeue_urb work correctly.
+      - Probably want to send a message, if possible,
+        but then really do the dequeue as well
+  *  Why does an rmmod with an active connection hang?
+     -  Seems a side effect of having an outbound urb get 'dropped'
+        That is, at this moment in time, USB_DIR_OUT packets are dropped
+        cdf19e882776680dbe98f98e23825506f61a86fc
+
+  *  Not just hacking the usbredirparser, but proper patches
+  *  Why is the thumb drive read only
+  *  Expose a sysfs attribute and have udev use it
+  *  Turn on more capabilities and watch it go

@@ -18,19 +18,14 @@
  * USA.
  */
 
-#include <linux/kthread.h>
-#include <linux/file.h>
-#include <linux/net.h>
-
-#include "usbredirparser.h"
 #include "usbredir.h"
 
 
 /* Sysfs entry to show port status */
-static ssize_t status_show(struct device *dev, struct device_attribute *attr,
-			   char *out)
+static ssize_t status_show(struct device_driver *driver, char *out)
 {
 	char *s = out;
+#if defined(HACK_TEMP_HACK)
 	int i;
 	struct usbredir_device *vdev;
 
@@ -64,13 +59,16 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr,
 
 	spin_unlock(&the_controller->lock);
 
+#endif
+	out += sprintf(out, "JPW hacking show\n");
 	return out - s;
 }
-static DEVICE_ATTR_RO(status);
+static DRIVER_ATTR_RO(status);
 
-static ssize_t store_detach(struct device *dev, struct device_attribute *attr,
+static ssize_t store_detach(struct device_driver *driver,
 			    const char *buf, size_t count)
 {
+#if defined(HACK_TEMP_HACK)
 	char devid[256];
 	struct usbredir_device *vdev;
 
@@ -100,8 +98,10 @@ static ssize_t store_detach(struct device *dev, struct device_attribute *attr,
 	usbredir_event_add(vdev, VDEV_EVENT_DOWN);
 
 	return count;
+#endif
+	return count;
 }
-static DEVICE_ATTR(detach, S_IWUSR, NULL, store_detach);
+static DRIVER_ATTR(detach, S_IWUSR, NULL, store_detach);
 
 
 /*
@@ -110,9 +110,10 @@ static DEVICE_ATTR(detach, S_IWUSR, NULL, store_detach);
  * information into this sysfs file.
  *
  */
-static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
+static ssize_t store_attach(struct device_driver *driver,
 			    const char *buf, size_t count)
 {
+#if defined(HACK_TEMP_HACK)
 	struct usbredir_device *vdev;
 	struct socket *socket;
 	int sockfd = 0;
@@ -179,16 +180,37 @@ static ssize_t store_attach(struct device *dev, struct device_attribute *attr,
 	spin_unlock(&the_controller->lock);
 
 	return count;
+#endif
+	struct usbredir_hub *hub;
+
+	pr_debug("JPW hacking attach\n");
+	hub = usbredir_hub_create();
+	pr_debug("JPW hub_create returns %p\n", hub);
+	if (hub)
+		usbredir_hub_destroy(hub);
+	return count;
+
 }
-static DEVICE_ATTR(attach, S_IWUSR, NULL, store_attach);
+static DRIVER_ATTR(attach, S_IWUSR, NULL, store_attach);
 
-static struct attribute *hub_dev_attrs[] = {
-	&dev_attr_status.attr,
-	&dev_attr_detach.attr,
-	&dev_attr_attach.attr,
-	NULL,
-};
+int usbredir_sysfs_register(struct device_driver *dev)
+{
+	int ret;
+	ret = driver_create_file(dev, &driver_attr_status);
+	if (ret)
+		return ret;
 
-const struct attribute_group hub_attr_group = {
-	.attrs = hub_dev_attrs,
-};
+	ret = driver_create_file(dev, &driver_attr_detach);
+	if (ret)
+		return ret;
+
+	return driver_create_file(dev, &driver_attr_attach);
+}
+
+void usbredir_sysfs_unregister(struct device_driver *dev)
+{
+	driver_remove_file(dev, &driver_attr_status);
+	driver_remove_file(dev, &driver_attr_detach);
+	driver_remove_file(dev, &driver_attr_attach);
+}
+

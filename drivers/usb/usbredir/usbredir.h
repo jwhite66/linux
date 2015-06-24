@@ -9,34 +9,21 @@
  *
  */
 
-#ifndef __USBIP_USBREDIR_H
-#define __USBIP_USBREDIR_H
+#ifndef __USBREDIR_H
+#define __USBREDIR_H
 
 #include <linux/device.h>
 #include <linux/list.h>
-#include <linux/spinlock.h>
-#include <linux/sysfs.h>
-#include <linux/types.h>
+#include <linux/platform_device.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
-#include <linux/wait.h>
 
 #include "usbredirparser.h"
 
 #define USBREDIR_MODULE_VERSION	"1.0"
 
-/* event handler */
-#define USBREDIR_EH_SHUTDOWN	(1 << 0)
-#define USBREDIR_EH_BYE		(1 << 1)
-#define USBREDIR_EH_RESET	(1 << 2)
-#define USBREDIR_EH_UNUSABLE	(1 << 3)
 
-#define	VDEV_EVENT_REMOVED	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_BYE)
-#define	VDEV_EVENT_DOWN		(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET)
-#define	VDEV_EVENT_ERROR_TCP	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET)
-#define	VDEV_EVENT_ERROR_MALLOC	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_UNUSABLE)
-
-/* JPW TODO - This should probably be over in include/uapi/linux */
+/* TODO - This should probably be over in include/uapi/linux */
 /* usbredir device status - exported in device sysfs status */
 enum usbredir_device_status {
 	/* vdev does not connect a remote device. */
@@ -50,28 +37,19 @@ enum usbredir_device_status {
 
 struct usbredir_device {
 	struct usb_device *udev;
+	struct usbredir_hub *hub;
 
-	// TODO - understand when/why to use locks, and follow that rule
+	// TODO - a thoughtful look into the locks is overdue
 	spinlock_t lock;
 
 	enum usbredir_device_status status;
+	u32 port_status;
 
 	struct socket *socket;
         struct usbredirparser *parser;
-	struct usbredir_hcd *uhcd;
 
 	struct task_struct *rx;
 	struct task_struct *tx;
-
-	unsigned long event;
-	struct task_struct *eh;
-	wait_queue_head_t eh_waitq;
-
-	struct eh_ops {
-		void (*shutdown)(struct usbredir_device *);
-		void (*reset)(struct usbredir_device *);
-		void (*unusable)(struct usbredir_device *);
-	} eh_ops;
 
 	/*
 	 * devid specifies a remote usb device uniquely
@@ -101,6 +79,74 @@ struct usbredir_device {
 	/* tx thread sleeps for this queue */
 	wait_queue_head_t waitq_tx;
 };
+
+/* Structure to hold a USB hub */
+struct usbredir_hub {
+	struct list_head	list;
+	int			id;
+	struct platform_device	pdev;
+	struct usb_hcd		*hcd;
+
+	spinlock_t lock;
+
+	atomic_t aseqnum;
+
+	unsigned resuming:1;
+	unsigned long re_timeout;
+
+	int			device_count;
+	struct usbredir_device *devices;
+};
+
+
+/* main.c */
+extern unsigned int max_hubs;
+extern unsigned int devices_per_hub;
+
+extern const char driver_name[];
+extern const char driver_desc[];
+
+/* sysfs.c */
+int usbredir_sysfs_register(struct device_driver *dev);
+void usbredir_sysfs_unregister(struct device_driver *dev);
+
+/* hub.c */
+int usbredir_hub_init(void);
+void usbredir_hub_exit(void);
+struct usbredir_hub *usbredir_hub_create(void);
+void usbredir_hub_destroy(struct usbredir_hub *hub);
+
+/* device.c */
+void usbredir_device_init(struct usbredir_device *dev, int port);
+void usbredir_device_destroy(struct usbredir_device *dev);
+int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
+			       int rhport, u16 wValue);
+int usbredir_device_port_status(struct usbredir_hub *hub, int rhport,
+				char *buf);
+int usbredir_device_set_port_feature(struct usbredir_hub *hub,
+			       int rhport, u16 wValue);
+
+
+/* Fast lookup functions */
+static inline struct usbredir_hub *usbredir_hub_from_hcd(struct usb_hcd *hcd)
+{
+	return * (struct usbredir_hub **) hcd->hcd_priv;
+}
+
+
+#if defined(HACK_AND_SLASH)
+
+/* event handler */
+#define USBREDIR_EH_SHUTDOWN	(1 << 0)
+#define USBREDIR_EH_BYE		(1 << 1)
+#define USBREDIR_EH_RESET	(1 << 2)
+#define USBREDIR_EH_UNUSABLE	(1 << 3)
+
+#define	VDEV_EVENT_REMOVED	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_BYE)
+#define	VDEV_EVENT_DOWN		(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET)
+#define	VDEV_EVENT_ERROR_TCP	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET)
+#define	VDEV_EVENT_ERROR_MALLOC	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_UNUSABLE)
+
 
 /* urb->hcpriv, use container_of() */
 struct usbredir_priv {
@@ -142,9 +188,6 @@ struct usbredir_hcd {
 	struct usbredir_device vdev[USBREDIR_NPORTS];
 };
 
-extern struct usbredir_hcd *the_controller;
-extern const struct attribute_group hub_attr_group;
-
 /* hcd .c */
 void hcd_connect_port(struct usbredir_device *vdev);
 struct usbredir_device *find_devid(struct usbredir_hcd *uhcd,
@@ -173,11 +216,6 @@ static inline struct usbredir_device *port_to_vdev(struct usbredir_hcd *uhcd,
 	return &uhcd->vdev[port];
 }
 
-static inline struct usbredir_hcd *hcd_to_usbredir(struct usb_hcd *hcd)
-{
-	return (struct usbredir_hcd *) (hcd->hcd_priv);
-}
-
 static inline struct usb_hcd *usbredir_to_hcd(struct usbredir_hcd *usbredir)
 {
 	return container_of((void *) usbredir, struct usb_hcd, hcd_priv);
@@ -202,5 +240,6 @@ static inline struct usbredir_device *udev_to_usbredir(struct usb_device *udev)
 	return NULL;
 }
 
+#endif
 
-#endif /* __USBIP_USBREDIR_H */
+#endif /* __USBREDIR_H */

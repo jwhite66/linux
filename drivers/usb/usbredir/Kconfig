@@ -8,3 +8,10 @@ config USBREDIR
 	  be called usbredir.
 
 	  If unsure, say N.
+
+config USBREDIR_DEBUG
+	bool "Debug messages for USBREDIR"
+	depends on USBREDIR
+	---help---
+	  This enables the debug messages from the USBREDIR drivers.
+
