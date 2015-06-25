@@ -22,22 +22,24 @@
 
 #include "usbredir.h"
 
-/* get URB from transmitted urb queue. caller must hold vdev->priv_lock */
-struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, int seqnum)
+/* get URB from transmitted urb queue. */
+struct urb *rx_pop_urb(struct usbredir_device *udev, int seqnum)
 {
-	struct usbredir_priv *priv, *tmp;
+	struct usbredir_urb *uurb, *tmp;
 	struct urb *urb = NULL;
 	int status;
 
-	list_for_each_entry_safe(priv, tmp, &vdev->priv_rx, list) {
-		if (priv->seqnum != seqnum)
+	spin_lock(&udev->lists_lock);
+
+	list_for_each_entry_safe(uurb, tmp, &udev->urblist_rx, list) {
+		if (uurb->seqnum != seqnum)
 			continue;
 
-		urb = priv->urb;
+		urb = uurb->urb;
 		status = urb->status;
 
 		pr_debug("usbredir: find urb %p vurb %p seqnum %u\n",
-			 urb, priv, seqnum);
+			 urb, uurb, seqnum);
 
 		switch (status) {
 		case -ENOENT:
@@ -56,12 +58,13 @@ struct urb *pickup_urb_and_free_priv(struct usbredir_device *vdev, int seqnum)
 				 status);
 		}
 
-		list_del(&priv->list);
-		kfree(priv);
+		list_del(&uurb->list);
+		kfree(uurb);
 		urb->hcpriv = NULL;
 
 		break;
 	}
+	spin_unlock(&udev->lists_lock);
 
 	return urb;
 }
@@ -72,17 +75,19 @@ int rx_loop(void *data)
 	int rc;
 
 	while (!kthread_should_stop()) {
-		if (usbredir_event_happened(vdev))
-			break;
+		//if (usbredir_event_happened(vdev))
+	        //		break;
+		//		TODO: find a better way to see if we're done
 
 		rc = usbredirparser_do_read(vdev->parser);
 		if (rc != -EAGAIN) {
 			pr_info("usbredir/rx:%d connection closed",
 				vdev->rhport);
-			usbredir_event_add(vdev, VDEV_EVENT_DOWN);
+			//usbredir_event_add(vdev, VDEV_EVENT_DOWN);
 			break;
 		}
 	}
+	// TODO - signal that we're done in some way?
 
 	return 0;
 }

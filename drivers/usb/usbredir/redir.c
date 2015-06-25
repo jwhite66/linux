@@ -54,15 +54,22 @@ static void redir_log(void *priv, int level, const char *msg)
 
 static int redir_read(void *priv, uint8_t *data, int count)
 {
-	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	struct msghdr msg;
 	struct kvec iov;
+	struct socket *socket;
 	int rc;
 
-	if (kthread_should_stop() || usbredir_event_happened(vdev))
+	// TODO - see if event thread can go, and if this is non blocking.if (kthread_should_stop() || usbredir_event_happened(dev))
+	if (kthread_should_stop())
 		return -ESRCH;
 
-	vdev->socket->sk->sk_allocation = GFP_NOIO;
+	spin_lock(&udev->lock);
+	socket = udev->socket;
+	// TODO - exit if thread stopped?
+	spin_unlock(&udev->lock);
+
+	socket->sk->sk_allocation = GFP_NOIO;
 	iov.iov_base    = data;
 	iov.iov_len     = count;
 	msg.msg_name    = NULL;
@@ -71,27 +78,34 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	msg.msg_controllen = 0;
 	msg.msg_flags = MSG_NOSIGNAL;
 
-	rc = kernel_recvmsg(vdev->socket, &msg, &iov, 1, count, MSG_WAITALL);
+	rc = kernel_recvmsg(socket, &msg, &iov, 1, count, MSG_WAITALL);
 
 	return rc;
 }
 
 static int redir_write(void *priv, uint8_t *data, int count)
 {
-	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	struct msghdr msg;
 	struct kvec iov;
 	int rc;
+	struct socket *socket;
 
 	memset(&msg, 0, sizeof(msg));
 	memset(&iov, 0, sizeof(iov));
 	msg.msg_flags = MSG_NOSIGNAL | MSG_DONTWAIT;
 	iov.iov_base = data;
 	iov.iov_len  = count;
-	rc = kernel_sendmsg(vdev->socket, &msg, &iov, 1, count);
+
+	spin_lock(&udev->lock);
+	socket = udev->socket;
+	spin_unlock(&udev->lock);
+
+	rc = kernel_sendmsg(socket, &msg, &iov, 1, count);
 	if (rc != count) {
+		// TODO - is a short write truly an error condition?
 		pr_err("Error %d writing %d bytes\n", rc, count);
-		usbredir_event_add(vdev, VDEV_EVENT_ERROR_TCP);
+		// TODO - see if event thread can go usbredir_event_add(dev, VDEV_EVENT_ERROR_TCP);
 		return -1;
 	}
 
@@ -140,9 +154,7 @@ static void redir_hello(void *priv,
 static void redir_device_connect(void *priv,
     struct usb_redir_device_connect_header *device_connect)
 {
-	struct usbredir_device *vdev = (struct usbredir_device *) priv;
-	// TODO: lock?
-	vdev->connect_header = *device_connect;
+	struct usbredir_device *udev = (struct usbredir_device *) priv;
 
 	pr_debug("  connect: class %2d subclass %2d protocol %2d",
            device_connect->device_class, device_connect->device_subclass,
@@ -150,7 +162,11 @@ static void redir_device_connect(void *priv,
 	pr_debug("  vendor 0x%04x product %04x\n",
            device_connect->vendor_id, device_connect->product_id);
 
-	hcd_connect_port(vdev);
+	spin_lock(&udev->lock);
+	udev->connect_header = *device_connect;
+	spin_unlock(&udev->lock);
+
+	usbredir_device_connect(udev);
 }
 
 static void redir_device_disconnect(void *priv)
@@ -166,16 +182,18 @@ static void redir_reset(void *priv)
 static void redir_interface_info(void *priv,
     struct usb_redir_interface_info_header *info)
 {
-	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	int i;
 
-	vdev->info_header = *info;
-	// TODO: lock?
 	for (i = 0; i < info->interface_count; i++) {
 		pr_debug("interface %d class %2d subclass %2d protocol %2d",
 			info->interface[i], info->interface_class[i],
 			info->interface_subclass[i], info->interface_protocol[i]);
 	}
+
+	spin_lock(&udev->lock);
+	udev->info_header = *info;
+	spin_unlock(&udev->lock);
 }
 
 /* Macros to go from an endpoint address to an index for our ep array */
@@ -185,11 +203,9 @@ static void redir_interface_info(void *priv,
 static void redir_ep_info(void *priv,
     struct usb_redir_ep_info_header *ep_info)
 {
-	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	int i;
 
-	// TODO - lock?
-	vdev->ep_info_header = *ep_info;
 	for (i = 0; i < 32; i++) {
 		if (ep_info->type[i] != usb_redir_type_invalid) {
 			pr_debug("endpoint: i %d, %02X, type: %d, interval: %d, interface: %d",
@@ -197,6 +213,10 @@ static void redir_ep_info(void *priv,
 				(int)ep_info->interface[i]);
 		}
 	}
+
+	spin_lock(&udev->lock);
+	udev->ep_info_header = *ep_info;
+	spin_unlock(&udev->lock);
 }
 
 static void redir_set_configuration(void *priv,
@@ -332,12 +352,10 @@ static void redir_control_packet(void *priv,
     uint64_t id, struct usb_redir_control_packet_header *control_header,
     uint8_t *data, int data_len)
 {
-	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	struct urb *urb;
 
-	spin_lock(&vdev->priv_lock);
-	urb = pickup_urb_and_free_priv(vdev, id);
-	spin_unlock(&vdev->priv_lock);
+	urb = rx_pop_urb(udev, id);
 	if (!urb) {
 		pr_err("Error: control id %lu received with no matching"
 		       " entry.\n",  (unsigned long) id);
@@ -361,23 +379,22 @@ pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len
 		urb->actual_length = control_header->length;
 	}
 
-	spin_lock(&vdev->uhcd->lock);
-	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(vdev->uhcd), urb);
-	spin_unlock(&vdev->uhcd->lock);
+	spin_lock(&udev->hub->lock);
+	usb_hcd_unlink_urb_from_ep(udev->hub->hcd, urb);
+	spin_unlock(&udev->hub->lock);
 
-	usb_hcd_giveback_urb(usbredir_to_hcd(vdev->uhcd), urb, urb->status);
+	// TODO - why not inside the lock?
+	usb_hcd_giveback_urb(udev->hub->hcd, urb, urb->status);
 }
 
 static void redir_bulk_packet(void *priv,
     uint64_t id, struct usb_redir_bulk_packet_header *bulk_header,
     uint8_t *data, int data_len)
 {
-	struct usbredir_device *vdev = (struct usbredir_device *) priv;
+	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	struct urb *urb;
 
-	spin_lock(&vdev->priv_lock);
-	urb = pickup_urb_and_free_priv(vdev, id);
-	spin_unlock(&vdev->priv_lock);
+	urb = rx_pop_urb(udev, id);
 	if (!urb) {
 		pr_err("Error: bulk id %lu received with no matching"
 		       " entry.\n",  (unsigned long) id);
@@ -407,11 +424,12 @@ pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len
 	// TODO - what to do with length, stream_id, and length_high
 	// TODO - handle more than this flavor...
 
-	spin_lock(&vdev->uhcd->lock);
-	usb_hcd_unlink_urb_from_ep(usbredir_to_hcd(vdev->uhcd), urb);
-	spin_unlock(&vdev->uhcd->lock);
+	spin_lock(&udev->hub->lock);
+	usb_hcd_unlink_urb_from_ep(udev->hub->hcd, urb);
+	spin_unlock(&udev->hub->lock);
 
-	usb_hcd_giveback_urb(usbredir_to_hcd(vdev->uhcd), urb, urb->status);
+	// TODO - why not inside the lock?
+	usb_hcd_giveback_urb(udev->hub->hcd, urb, urb->status);
 }
 
 static void redir_iso_packet(void *priv,

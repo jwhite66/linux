@@ -25,6 +25,7 @@
 
 /* TODO - This should probably be over in include/uapi/linux */
 /* usbredir device status - exported in device sysfs status */
+/* TODO - why this status, and not just reuse port_status */
 enum usbredir_device_status {
 	/* vdev does not connect a remote device. */
 	VDEV_ST_NULL,
@@ -36,7 +37,7 @@ enum usbredir_device_status {
 };
 
 struct usbredir_device {
-	struct usb_device *udev;
+	struct usb_device *usb_dev;
 	struct usbredir_hub *hub;
 
 	// TODO - a thoughtful look into the locks is overdue
@@ -52,7 +53,8 @@ struct usbredir_device {
 	struct task_struct *tx;
 
 	/*
-	 * devid specifies a remote usb device uniquely
+	 * devid specifies a remote usb device; user space
+	 *  is responsible for seeing that they are unique
 	 */
 	char *devid;
 
@@ -65,14 +67,14 @@ struct usbredir_device {
 	__u32 rhport;
 
 	/* lock for the below link lists */
-	spinlock_t priv_lock;
+	// TODO - Do away with in favor of a single lock?
+	spinlock_t lists_lock;
 
-	/* usbredir_priv is linked to one of them. */
-	// TODO - rename these?
-	struct list_head priv_tx;
-	struct list_head priv_rx;
+	/* list of types usbredir_urb */
+	struct list_head urblist_tx;
+	struct list_head urblist_rx;
 
-	/* usbredir_unlink is linked to one of them */
+	/* list of types usbredir_unlink */
 	struct list_head unlink_tx;
 	struct list_head unlink_rx;
 
@@ -98,6 +100,26 @@ struct usbredir_hub {
 	struct usbredir_device *devices;
 };
 
+/* Structure to hold a urb as we process it */
+struct usbredir_urb {
+	int seqnum;
+	struct list_head list;
+
+	struct usbredir_device *udev;
+	struct urb *urb;
+};
+
+/* Structure to hold an unlink request as we process it */
+struct usbredir_unlink {
+	/* seqnum of this request */
+	int seqnum;
+
+	struct list_head list;
+
+	/* seqnum of the unlink target */
+	int unlink_seqnum;
+};
+
 
 /* main.c */
 extern unsigned int max_hubs;
@@ -115,10 +137,15 @@ int usbredir_hub_init(void);
 void usbredir_hub_exit(void);
 struct usbredir_hub *usbredir_hub_create(void);
 void usbredir_hub_destroy(struct usbredir_hub *hub);
+struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
+						     struct socket *socket);
+struct usbredir_device *usbredir_hub_find_device(const char *devid);
+
 
 /* device.c */
-void usbredir_device_init(struct usbredir_device *dev, int port);
-void usbredir_device_destroy(struct usbredir_device *dev);
+void usbredir_device_init(struct usbredir_device *udev, int port);
+void usbredir_device_destroy(struct usbredir_device *udev);
+void usbredir_device_connect(struct usbredir_device *udev);
 int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue);
 int usbredir_device_port_status(struct usbredir_hub *hub, int rhport,
@@ -126,6 +153,21 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport,
 int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue);
 
+/* redir.c */
+struct usbredirparser * redir_parser_init(void *priv);
+
+/* rx.c */
+struct urb *rx_pop_urb(struct usbredir_device *udev, int seqnum);
+int rx_loop(void *data);
+
+/* tx.c */
+void tx_urb(struct usbredir_device *udev, struct urb *urb);
+int tx_loop(void *data);
+
+/* urb.c */
+int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
+			    gfp_t mem_flags);
+int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status);
 
 /* Fast lookup functions */
 static inline struct usbredir_hub *usbredir_hub_from_hcd(struct usb_hcd *hcd)
@@ -147,25 +189,6 @@ static inline struct usbredir_hub *usbredir_hub_from_hcd(struct usb_hcd *hcd)
 #define	VDEV_EVENT_ERROR_TCP	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_RESET)
 #define	VDEV_EVENT_ERROR_MALLOC	(USBREDIR_EH_SHUTDOWN | USBREDIR_EH_UNUSABLE)
 
-
-/* urb->hcpriv, use container_of() */
-struct usbredir_priv {
-	int seqnum;
-	struct list_head list;
-
-	struct usbredir_device *vdev;
-	struct urb *urb;
-};
-
-struct usbredir_unlink {
-	/* seqnum of this request */
-	int seqnum;
-
-	struct list_head list;
-
-	/* seqnum of the unlink target */
-	int unlink_seqnum;
-};
 
 /* Number of supported ports. Value has an upperbound of USB_MAXCHILDREN */
 #define USBREDIR_NPORTS 8

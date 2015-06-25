@@ -18,6 +18,9 @@
  * USA.
  */
 
+#include <linux/file.h>
+#include <linux/net.h>
+
 #include "usbredir.h"
 
 
@@ -113,15 +116,10 @@ static DRIVER_ATTR(detach, S_IWUSR, NULL, store_detach);
 static ssize_t store_attach(struct device_driver *driver,
 			    const char *buf, size_t count)
 {
-#if defined(HACK_TEMP_HACK)
-	struct usbredir_device *vdev;
 	struct socket *socket;
 	int sockfd = 0;
 	char devid[256];
-	char pname[32];
 	int err;
-	__u32 rhport = -1;
-	int i;
 
 	/*
 	 * @sockfd: socket descriptor of an established TCP connection
@@ -138,73 +136,34 @@ static ssize_t store_attach(struct device_driver *driver,
 	if (!socket)
 		return -EINVAL;
 
-	if (find_devid(the_controller, devid)) {
-		dev_err(dev, "%s: already in use\n", devid);
+	if (usbredir_hub_find_device(devid)) {
+		pr_err("%s: already in use\n", devid);
 		sockfd_put(socket);
 		return -EINVAL;
 	}
 
-	spin_lock(&the_controller->lock);
-	for (i = 0; i < USBREDIR_NPORTS; i++) {
-		vdev = port_to_vdev(the_controller, i);
-		spin_lock(&vdev->lock);
-		if (vdev->status == VDEV_ST_NULL) {
-			rhport = i;
-			break;
-		}
-		spin_unlock(&vdev->lock);
-	}
-
-	if (rhport < 0) {
-		dev_err(dev, "%s: no port available\n", devid);
-		spin_unlock(&the_controller->lock);
+	if (!usbredir_hub_allocate_device(devid, socket)) {
+		pr_err("%s: unable to create\n", devid);
 		sockfd_put(socket);
 		return -EINVAL;
 	}
 
-	dev_info(dev, "sockfd(%d) devid(%s)\n", sockfd, devid);
-
-	vdev->devid  = kstrdup(devid, GFP_KERNEL);
-	vdev->status = VDEV_ST_NOTASSIGNED;
-	vdev->socket = socket;
-
-	vdev->parser = redir_parser_init(vdev);
-	vdev->uhcd   = the_controller;
-
-	sprintf(pname, "usbredir/rx:%d", vdev->rhport);
-	vdev->rx = kthread_run(rx_loop, vdev, pname);
-	sprintf(pname, "usbredir/tx:%d", vdev->rhport);
-	vdev->tx = kthread_run(tx_loop, vdev, pname);
-
-	spin_unlock(&vdev->lock);
-	spin_unlock(&the_controller->lock);
-
 	return count;
-#endif
-	struct usbredir_hub *hub;
-
-	pr_debug("JPW hacking attach\n");
-	hub = usbredir_hub_create();
-	pr_debug("JPW hub_create returns %p\n", hub);
-	if (hub)
-		usbredir_hub_destroy(hub);
-	return count;
-
 }
 static DRIVER_ATTR(attach, S_IWUSR, NULL, store_attach);
 
-int usbredir_sysfs_register(struct device_driver *dev)
+int usbredir_sysfs_register(struct device_driver *driver)
 {
 	int ret;
-	ret = driver_create_file(dev, &driver_attr_status);
+	ret = driver_create_file(driver, &driver_attr_status);
 	if (ret)
 		return ret;
 
-	ret = driver_create_file(dev, &driver_attr_detach);
+	ret = driver_create_file(driver, &driver_attr_detach);
 	if (ret)
 		return ret;
 
-	return driver_create_file(dev, &driver_attr_attach);
+	return driver_create_file(driver, &driver_attr_attach);
 }
 
 void usbredir_sysfs_unregister(struct device_driver *dev)

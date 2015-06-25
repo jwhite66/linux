@@ -23,31 +23,33 @@
 
 #include "usbredir.h"
 
-static struct usbredir_priv *get_next_cmd(struct usbredir_device *vdev)
+static struct usbredir_urb *get_next_cmd(struct usbredir_device *udev)
 {
-	struct usbredir_priv *priv, *tmp;
+	struct usbredir_urb *uurb, *tmp;
 
-	spin_lock(&vdev->priv_lock);
+	spin_lock(&udev->lists_lock);
 
-	list_for_each_entry_safe(priv, tmp, &vdev->priv_tx, list) {
-		list_move_tail(&priv->list, &vdev->priv_rx);
-		spin_unlock(&vdev->priv_lock);
-		return priv;
+	list_for_each_entry_safe(uurb, tmp, &udev->urblist_tx, list) {
+		list_move_tail(&uurb->list, &udev->urblist_rx);
+		spin_unlock(&udev->lists_lock);
+		return uurb;
 	}
 
-	spin_unlock(&vdev->priv_lock);
+	spin_unlock(&udev->lists_lock);
 
 	return NULL;
 }
 
-static int send_cmd(struct usbredir_device *vdev)
+static int send_cmd(struct usbredir_device *udev)
 {
-	struct usbredir_priv *priv = NULL;
+	struct usbredir_urb *uurb = NULL;
 
 	size_t total_size = 0;
 
-	while ((priv = get_next_cmd(vdev)) != NULL) {
-		struct urb *urb = priv->urb;
+	// TODO - lock?
+
+	while ((uurb = get_next_cmd(udev)) != NULL) {
+		struct urb *urb = uurb->urb;
 		__u8 type = usb_pipetype(urb->pipe);
 
 		pr_debug("JPW urb: [pipe %x|type %d|stream_id %u|status %d|",
@@ -79,8 +81,8 @@ static int send_cmd(struct usbredir_device *vdev)
 			pr_debug("control request to endpoint 0x%x:\n",
 				 ctrl.endpoint);
 
-			usbredirparser_send_control_packet(vdev->parser,
-				priv->seqnum, &ctrl,
+			usbredirparser_send_control_packet(udev->parser,
+				uurb->seqnum, &ctrl,
 				usb_pipein(urb->pipe) ?
 					NULL : urb->transfer_buffer,
 				usb_pipein(urb->pipe) ?
@@ -100,8 +102,8 @@ static int send_cmd(struct usbredir_device *vdev)
 			pr_debug("bulk request to endpoint 0x%x:\n",
 				 bulk.endpoint);
 
-			usbredirparser_send_bulk_packet(vdev->parser,
-				priv->seqnum, &bulk,
+			usbredirparser_send_bulk_packet(udev->parser,
+				uurb->seqnum, &bulk,
 				usb_pipein(urb->pipe) ?
 					NULL : urb->transfer_buffer,
 				usb_pipein(urb->pipe) ?
@@ -113,30 +115,30 @@ static int send_cmd(struct usbredir_device *vdev)
 	return total_size;
 }
 
-static struct usbredir_unlink *get_next_unlink(struct usbredir_device *vdev)
+static struct usbredir_unlink *get_next_unlink(struct usbredir_device *udev)
 {
 	struct usbredir_unlink *unlink, *tmp;
 
-	spin_lock(&vdev->priv_lock);
+	spin_lock(&udev->lists_lock);
 
-	list_for_each_entry_safe(unlink, tmp, &vdev->unlink_tx, list) {
-		list_move_tail(&unlink->list, &vdev->unlink_rx);
-		spin_unlock(&vdev->priv_lock);
+	list_for_each_entry_safe(unlink, tmp, &udev->unlink_tx, list) {
+		list_move_tail(&unlink->list, &udev->unlink_rx);
+		spin_unlock(&udev->lists_lock);
 		return unlink;
 	}
 
-	spin_unlock(&vdev->priv_lock);
+	spin_unlock(&udev->lists_lock);
 
 	return NULL;
 }
 
-static int send_unlink(struct usbredir_device *vdev)
+static int send_unlink(struct usbredir_device *udev)
 {
 	struct usbredir_unlink *unlink = NULL;
 
 	size_t total_size = 0;
 
-	while ((unlink = get_next_unlink(vdev)) != NULL) {
+	while ((unlink = get_next_unlink(udev)) != NULL) {
 		pr_debug("partially unimplemented: unlink request of "
 			 "seqnum %d, unlink seqnum %d\n",
 			unlink->seqnum, unlink->unlink_seqnum);
@@ -144,69 +146,65 @@ static int send_unlink(struct usbredir_device *vdev)
 		// TODO - if the other side never responds, which it may
 		//        not do if the seqnum doesn't match, then we
 		//        never clear this entry.  That's probably not ideal
-		usbredirparser_send_cancel_data_packet(vdev->parser,
+		usbredirparser_send_cancel_data_packet(udev->parser,
 						       unlink->unlink_seqnum);
 	}
 
 	return total_size;
 }
 
-void tx_urb(struct urb *urb)
+void tx_urb(struct usbredir_device *udev, struct urb *urb)
 {
-	struct usbredir_device *vdev = udev_to_usbredir(urb->dev);
-	struct usbredir_priv *priv;
+	struct usbredir_urb *uurb;
 
-	if (!vdev) {
-		pr_err("could not get virtual device");
+	uurb = kzalloc(sizeof(struct usbredir_urb), GFP_ATOMIC);
+	if (!uurb) {
+		//usbredir_event_add(dev, VDEV_EVENT_ERROR_MALLOC);
+		// TODO - find a different way to signal this failure
 		return;
 	}
 
-	priv = kzalloc(sizeof(struct usbredir_priv), GFP_ATOMIC);
-	if (!priv) {
-		usbredir_event_add(vdev, VDEV_EVENT_ERROR_MALLOC);
-		return;
-	}
+	spin_lock(&udev->lists_lock);
 
-	spin_lock(&vdev->priv_lock);
+	uurb->seqnum = atomic_inc_return(&udev->hub->aseqnum);
 
-	priv->seqnum = atomic_inc_return(&vdev->uhcd->aseqnum);
+	uurb->udev = udev;
+	uurb->urb = urb;
 
-	priv->vdev = vdev;
-	priv->urb = urb;
+	urb->hcpriv = (void *) uurb;
 
-	urb->hcpriv = (void *) priv;
+	list_add_tail(&uurb->list, &udev->urblist_tx);
 
-	list_add_tail(&priv->list, &vdev->priv_tx);
-
-	wake_up(&vdev->waitq_tx);
-	spin_unlock(&vdev->priv_lock);
+	wake_up(&udev->waitq_tx);
+	spin_unlock(&udev->lists_lock);
 }
 
 
 int tx_loop(void *data)
 {
-	struct usbredir_device *vdev = data;
+	struct usbredir_device *udev = data;
 
 	while (!kthread_should_stop()) {
-		if (usbredirparser_has_data_to_write(vdev->parser)) {
-			if (usbredirparser_do_write(vdev->parser)) {
+		if (usbredirparser_has_data_to_write(udev->parser)) {
+			if (usbredirparser_do_write(udev->parser)) {
 				// TODO - need to think about this
 				break;
 			}
 		}
 
-		if (send_cmd(vdev) < 0)
+		if (send_cmd(udev) < 0)
 			break;
 
-		if (send_unlink(vdev) < 0)
+		if (send_unlink(udev) < 0)
 			break;
 
-		wait_event_interruptible(vdev->waitq_tx,
-			 (!list_empty(&vdev->priv_tx) ||
-			  !list_empty(&vdev->unlink_tx) ||
+		wait_event_interruptible(udev->waitq_tx,
+			 (!list_empty(&udev->urblist_tx) ||
+			  !list_empty(&udev->unlink_tx) ||
 			  kthread_should_stop() ||
-			 usbredirparser_has_data_to_write(vdev->parser)));
+			 usbredirparser_has_data_to_write(udev->parser)));
 	}
 
+	// TODO - signal we're done?
 	return 0;
 }

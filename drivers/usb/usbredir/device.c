@@ -20,26 +20,51 @@
 
 #include "usbredir.h"
 
-void usbredir_device_init(struct usbredir_device *dev, int port)
+void usbredir_device_init(struct usbredir_device *udev, int port)
 {
-	memset(dev, 0, sizeof(*dev));
+	memset(udev, 0, sizeof(*udev));
 
-	dev->rhport = port;
-	dev->status = VDEV_ST_NULL;
-	spin_lock_init(&dev->lock);
+	udev->rhport = port;
+	udev->status = VDEV_ST_NULL;
+	spin_lock_init(&udev->lock);
+	spin_lock_init(&udev->lists_lock);
 
-	INIT_LIST_HEAD(&dev->priv_rx);
-	INIT_LIST_HEAD(&dev->priv_tx);
-	INIT_LIST_HEAD(&dev->unlink_tx);
-	INIT_LIST_HEAD(&dev->unlink_rx);
+	INIT_LIST_HEAD(&udev->urblist_rx);
+	INIT_LIST_HEAD(&udev->urblist_tx);
+	INIT_LIST_HEAD(&udev->unlink_tx);
+	INIT_LIST_HEAD(&udev->unlink_rx);
 
-	spin_lock_init(&dev->priv_lock);
 
-	init_waitqueue_head(&dev->waitq_tx);
+	init_waitqueue_head(&udev->waitq_tx);
 }
 
-void usbredir_device_destroy(struct usbredir_device *dev)
+void usbredir_device_destroy(struct usbredir_device *udev)
 {
+}
+
+static u32 speed_to_portflag(enum usb_device_speed speed)
+{
+	switch(speed) {
+	case usb_redir_speed_low:   return USB_PORT_STAT_LOW_SPEED;
+	case usb_redir_speed_high:  return USB_PORT_STAT_HIGH_SPEED;
+
+	case usb_redir_speed_full:
+	case usb_redir_speed_super:
+	default:		    return 0;
+	}
+}
+
+// TODO - no thought at all to Super speed stuff...
+void usbredir_device_connect(struct usbredir_device *udev)
+{
+	spin_lock(&udev->lock);
+	pr_debug("hcd_connect_port %d:%s\n", udev->rhport, udev->devid);
+	udev->port_status |= USB_PORT_STAT_CONNECTION |
+			    (1 << USB_PORT_FEAT_C_CONNECTION);
+	udev->port_status |= speed_to_portflag(udev->connect_header.speed);
+	spin_unlock(&udev->lock);
+
+	usb_hcd_poll_rh_status(udev->hub->hcd);
 }
 
 
@@ -57,20 +82,20 @@ static int valid_port(struct usbredir_hub *hub, int rhport)
 int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue)
 {
-	struct usbredir_device *dev;
+	struct usbredir_device *udev;
 
 	if (! valid_port(hub, rhport))
 		return -EPIPE;
 
 	spin_lock(&hub->lock);
 
-	dev = hub->devices + rhport;
-	spin_lock(&dev->lock);
+	udev = hub->devices + rhport;
+	spin_lock(&udev->lock);
 
 	switch (wValue) {
 	case USB_PORT_FEAT_SUSPEND:
 		pr_debug(" ClearPortFeature: USB_PORT_FEAT_SUSPEND\n");
-		if (dev->port_status & USB_PORT_STAT_SUSPEND) {
+		if (udev->port_status & USB_PORT_STAT_SUSPEND) {
 			/* 20msec signaling */
 			/* TODO - figure out what this is about */
 			hub->resuming = 1;
@@ -80,29 +105,29 @@ int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 		break;
 	case USB_PORT_FEAT_POWER:
 		pr_debug(" ClearPortFeature: USB_PORT_FEAT_POWER\n");
-		dev->port_status = 0;
+		udev->port_status = 0;
 		hub->resuming = 0;
 		break;
 	case USB_PORT_FEAT_C_RESET:
 		pr_debug(" ClearPortFeature: USB_PORT_FEAT_C_RESET\n");
 		// TODO - USB 3.0 stuff as well?
-		switch (dev->connect_header.speed) {
+		switch (udev->connect_header.speed) {
 		case usb_redir_speed_high:
-			dev->port_status |= USB_PORT_STAT_HIGH_SPEED;
+			udev->port_status |= USB_PORT_STAT_HIGH_SPEED;
 			break;
 		case usb_redir_speed_low:
-			dev->port_status |= USB_PORT_STAT_LOW_SPEED;
+			udev->port_status |= USB_PORT_STAT_LOW_SPEED;
 			break;
 		default:
 			break;
 		}
 	default:
 		pr_debug(" ClearPortFeature: default %x\n", wValue);
-		dev->port_status &= ~(1 << wValue);
+		udev->port_status &= ~(1 << wValue);
 		break;
 	}
 
-	spin_unlock(&dev->lock);
+	spin_unlock(&udev->lock);
 	spin_unlock(&hub->lock);
 
 	return 0;
@@ -110,14 +135,14 @@ int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 
 int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 {
-	struct usbredir_device *dev;
+	struct usbredir_device *udev;
 	if (! valid_port(hub, rhport))
 		return -EPIPE;
 
 	spin_lock(&hub->lock);
 
-	dev = hub->devices + rhport;
-	spin_lock(&dev->lock);
+	udev = hub->devices + rhport;
+	spin_lock(&udev->lock);
 
 
 	/* TODO - read these comments and delete them or 
@@ -128,35 +153,35 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 	 * complete it!!
 	 */
 	if (hub->resuming && time_after(jiffies, hub->re_timeout)) {
-		dev->port_status |= (1 << USB_PORT_FEAT_C_SUSPEND);
-		dev->port_status &= ~(1 << USB_PORT_FEAT_SUSPEND);
+		udev->port_status |= (1 << USB_PORT_FEAT_C_SUSPEND);
+		udev->port_status &= ~(1 << USB_PORT_FEAT_SUSPEND);
 		hub->resuming = 0;
 		hub->re_timeout = 0;
 	}
 
-	if ((dev->port_status & (1 << USB_PORT_FEAT_RESET)) != 0 &&
+	if ((udev->port_status & (1 << USB_PORT_FEAT_RESET)) != 0 &&
 	     time_after(jiffies, hub->re_timeout)) {
-		dev->port_status |= (1 << USB_PORT_FEAT_C_RESET);
-		dev->port_status &= ~(1 << USB_PORT_FEAT_RESET);
+		udev->port_status |= (1 << USB_PORT_FEAT_C_RESET);
+		udev->port_status &= ~(1 << USB_PORT_FEAT_RESET);
 		hub->re_timeout = 0;
 
-		if (dev->status == VDEV_ST_NOTASSIGNED) {
+		if (udev->status == VDEV_ST_NOTASSIGNED) {
 			pr_debug(
 				" enable rhport %d (status %u)\n",
 				rhport,
-				dev->status);
-			dev->port_status |= USB_PORT_STAT_ENABLE;
+				udev->status);
+			udev->port_status |= USB_PORT_STAT_ENABLE;
 		}
 	}
 
-	((__le16 *) buf)[0] = cpu_to_le16(dev->port_status);
+	((__le16 *) buf)[0] = cpu_to_le16(udev->port_status);
 	((__le16 *) buf)[1] =
-		cpu_to_le16(dev->port_status >> 16);
+		cpu_to_le16(udev->port_status >> 16);
 
 	pr_debug(" GetPortStatus bye %x %x\n", ((u16 *)buf)[0],
 			  ((u16 *)buf)[1]);
 
-	spin_unlock(&dev->lock);
+	spin_unlock(&udev->lock);
 	spin_unlock(&hub->lock);
 	return 0;
 }
@@ -164,14 +189,14 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue)
 {
-	struct usbredir_device *dev;
+	struct usbredir_device *udev;
 	if (! valid_port(hub, rhport))
 		return -EPIPE;
 
 	spin_lock(&hub->lock);
 
-	dev = hub->devices + rhport;
-	spin_lock(&dev->lock);
+	udev = hub->devices + rhport;
+	spin_lock(&udev->lock);
 	switch (wValue) {
 	case USB_PORT_FEAT_SUSPEND:
 		pr_debug(
@@ -180,7 +205,7 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 	case USB_PORT_FEAT_RESET:
 		pr_debug(
 			" SetPortFeature: USB_PORT_FEAT_RESET\n");
-		dev->port_status &= ~USB_PORT_STAT_ENABLE;
+		udev->port_status &= ~USB_PORT_STAT_ENABLE;
 
 		/* 50msec reset signaling */
 		hub->re_timeout = jiffies + msecs_to_jiffies(50);
@@ -188,11 +213,12 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 		/* FALLTHROUGH */
 	default:
 		pr_debug(" SetPortFeature: default %d\n", wValue);
-		dev->port_status |= (1 << wValue);
+		udev->port_status |= (1 << wValue);
 		break;
 	}
 
-	spin_unlock(&dev->lock);
+	spin_unlock(&udev->lock);
 	spin_unlock(&hub->lock);
 	return 0;
 }
+
