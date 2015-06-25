@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Jeremy White
+ * Copyright (C) 2015 Jeremy White based on work by
  * Copyright (C) 2003-2008 Takahiro Hirofuchi
  *
  * This is free software; you can redistribute it and/or modify
