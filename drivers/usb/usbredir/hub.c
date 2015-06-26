@@ -115,6 +115,7 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 	/* check pseudo status register for each port */
 	for (rhport = 0; rhport < hub->device_count; rhport++) {
 		struct usbredir_device *udev = hub->devices + rhport;
+
 		spin_lock(&udev->lock);
 		if (udev->port_status &
 			((USB_PORT_STAT_C_CONNECTION
@@ -314,7 +315,7 @@ static int usbredir_create_hcd(struct usbredir_hub *hub)
 	/* TODO - review if we want to has_tt, and anything like it... */
 	hub->hcd->has_tt = 1;
 
-	/* TODO - no one else stores a pointer 
+	/* TODO - no one else stores a pointer
 	*        may want to rethink the structure.
 	*        Question:  do we really need to create the pdev first? */
 	*((struct usbredir_hub **) hub->hcd->hcd_priv) = hub;

@@ -141,8 +141,8 @@ static int send_unlink(struct usbredir_device *udev)
 			unlink->seqnum, unlink->unlink_seqnum);
 
 		/* TODO - if the other side never responds, which it may
-		        not do if the seqnum doesn't match, then we
-		        never clear this entry.  That's probably not ideal */
+			not do if the seqnum doesn't match, then we
+			never clear this entry.  That's probably not ideal */
 		usbredirparser_send_cancel_data_packet(udev->parser,
 						       unlink->unlink_seqnum);
 	}

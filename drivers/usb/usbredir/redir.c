@@ -25,7 +25,7 @@
 #include "usbredir.h"
 
 
-#define TODO_IMPLEMENT pr_err("Error: %s unimplemented.\n", __func__);
+#define TODO_IMPLEMENT pr_err("Error: %s unimplemented.\n", __func__)
 
 static void redir_log(void *priv, int level, const char *msg)
 {
@@ -183,7 +183,8 @@ static void redir_interface_info(void *priv,
 	for (i = 0; i < info->interface_count; i++) {
 		pr_debug("interface %d class %2d subclass %2d protocol %2d",
 			info->interface[i], info->interface_class[i],
-			info->interface_subclass[i], info->interface_protocol[i]);
+			info->interface_subclass[i],
+			info->interface_protocol[i]);
 	}
 
 	spin_lock(&udev->lock);
@@ -373,25 +374,25 @@ static void redir_control_packet(void *priv,
 
 	urb = rx_pop_urb(udev, id);
 	if (!urb) {
-		pr_err("Error: control id %lu received with no matching"
-		       " entry.\n",  (unsigned long) id);
+		pr_err("Error: control id %lu with no matching entry.\n",
+		       (unsigned long) id);
 		return;
 	}
 
 /*pr_debug("JPW handling control packet response, id %ld\n", (long) id);
-pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
+pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length,
+data_len);
 print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len); */
 
 	/* TODO - handle more than this flavor... */
 	/* TODO - map statii correctly */
 	urb->status = control_header->status;
 	if (usb_pipein(urb->pipe)) {
-		urb->actual_length = min((u32) data_len,
+		urb->actual_length = min_t(u32, data_len,
 					 urb->transfer_buffer_length);
 		if (urb->transfer_buffer)
 			memcpy(urb->transfer_buffer, data, urb->actual_length);
-	}
-	else {
+	} else {
 		urb->actual_length = control_header->length;
 	}
 
@@ -413,28 +414,29 @@ static void redir_bulk_packet(void *priv,
 
 	urb = rx_pop_urb(udev, id);
 	if (!urb) {
-		pr_err("Error: bulk id %lu received with no matching"
-		       " entry.\n",  (unsigned long) id);
+		pr_err("Error: bulk id %lu with no matching entry.\n",
+		       (unsigned long) id);
 		return;
 	}
 
 /*pr_debug("JPW handling bulk packet response, id %ld\n", (long) id);
-pr_debug("ep %d, status %d, length %d\n", bulk_header->endpoint, bulk_header->status,
+pr_debug("ep %d, status %d, length %d\n", bulk_header->endpoint,
+	bulk_header->status,
 	 bulk_header->length);
 pr_debug("stream_id %d, length_high %d\n", bulk_header->stream_id,
 	 bulk_header->length_high);
-pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
+pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length,
+	data_len);
 print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len); */
 
 	/* TODO - map statii correctly */
 	urb->status = bulk_header->status;
 	if (usb_pipein(urb->pipe)) {
-		urb->actual_length = min((u32) data_len,
+		urb->actual_length = min_t(u32, data_len,
 					 urb->transfer_buffer_length);
 		if (urb->transfer_buffer)
 			memcpy(urb->transfer_buffer, data, urb->actual_length);
-	}
-	else {
+	} else {
 		urb->actual_length = bulk_header->length;
 	}
 
@@ -534,7 +536,8 @@ struct usbredirparser *redir_parser_init(void *priv)
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_connect_device_version);
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_filter);
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_device_disconnect_ack);
-	usbredirparser_caps_set_cap(caps, usb_redir_cap_ep_info_max_packet_size);
+	usbredirparser_caps_set_cap(caps,
+				usb_redir_cap_ep_info_max_packet_size);
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_64bits_ids);
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_32bits_bulk_length);
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_bulk_receiving);
