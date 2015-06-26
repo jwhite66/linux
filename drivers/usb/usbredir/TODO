@@ -1,19 +1,11 @@
 TODO:
-  *  Attaching the thumb drive, and then breaking
-     the connection, causes trouble.
-     Seems like we need a way of signaling to the
-     higher order that there is trouble.
-     (May be implementing urb/unlink flushing
-     may do it)
-  *  Test connect, and then disconnect for cleanup
-  *  Current code has no event thread, which, afaict, was just used
-     to tear the device down.  Can we do without it?
+  *  Getting sporadic failures, and we can't read/write data
+     to the drive just yet.  Probably something not quite right.
   *  Hmm.  KFP_ATOMIC on our mallocs may be better than _KERNEL...
   *  Read and deal with the many TODOs
   *  Make a dequeue_urb work correctly.
       - Probably want to send a message, if possible,
         but then really do the dequeue as well
   *  Not just hacking the usbredirparser, but proper patches
-  *  Why is the thumb drive read only
   *  Expose a sysfs attribute and have udev use it
   *  Turn on more capabilities and watch it go

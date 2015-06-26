@@ -160,6 +160,7 @@ void tx_urb(struct usbredir_device *udev, struct urb *urb)
 	uurb = kzalloc(sizeof(struct usbredir_urb), GFP_ATOMIC);
 	if (!uurb) {
 		pr_err("Error allocating a usbredir_urb structure\n");
+		usbredir_device_disconnect(udev);
 		usbredir_device_deallocate(udev, true, true);
 		return;
 	}
@@ -205,6 +206,7 @@ int tx_loop(void *data)
 			 usbredirparser_has_data_to_write(udev->parser)));
 	}
 
+	usbredir_device_disconnect(udev);
 	usbredir_device_deallocate(udev, true, false);
 
 	return 0;

@@ -60,6 +60,7 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 	atomic_set(&udev->active, 1);
 	udev->socket = socket;
 
+	udev->port_status = 0;
 
 	sprintf(pname, "usbredir/rx:%d", udev->rhport);
 	udev->rx = kthread_run(rx_loop, udev, pname);
@@ -71,7 +72,7 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 void usbredir_device_deallocate(struct usbredir_device *udev,
 				bool stoprx, bool stoptx)
 {
-	pr_debug("destroy_device %p/%d (active %d)\n", udev,
+	pr_debug("%s %p/%d (active %d)\n", __FUNCTION__, udev,
 		 udev->rhport, atomic_read(&udev->active));
 	if (atomic_dec_if_positive(&udev->active) < 0)
 		return;
@@ -137,7 +138,7 @@ static u32 speed_to_portflag(enum usb_device_speed speed)
 void usbredir_device_connect(struct usbredir_device *udev)
 {
 	spin_lock(&udev->lock);
-	pr_debug("hcd_connect_port %d:%s\n", udev->rhport, udev->devid);
+	pr_debug("%s %d:%s\n", __func__, udev->rhport, udev->devid);
 	udev->port_status |= USB_PORT_STAT_CONNECTION |
 			    (1 << USB_PORT_FEAT_C_CONNECTION);
 	udev->port_status |= speed_to_portflag(udev->connect_header.speed);
@@ -145,6 +146,18 @@ void usbredir_device_connect(struct usbredir_device *udev)
 
 	usb_hcd_poll_rh_status(udev->hub->hcd);
 }
+
+void usbredir_device_disconnect(struct usbredir_device *udev)
+{
+	spin_lock(&udev->lock);
+	pr_debug("%s %d:%s\n", __func__, udev->rhport, udev->devid);
+	udev->port_status  &= ~USB_PORT_STAT_CONNECTION;
+	udev->port_status  |= (1 << USB_PORT_FEAT_C_CONNECTION);
+	spin_unlock(&udev->lock);
+
+	usb_hcd_poll_rh_status(udev->hub->hcd);
+}
+
 
 
 static struct usbredir_device *validate_and_lock(struct usbredir_hub *hub,
@@ -158,10 +171,6 @@ static struct usbredir_device *validate_and_lock(struct usbredir_hub *hub,
 		return NULL;
 	}
 	udev = hub->devices + rhport;
-	if (!atomic_read(&udev->active)) {
-		spin_unlock(&hub->lock);
-		return NULL;
-	}
 
 	spin_lock(&udev->lock);
 	return udev;
@@ -221,6 +230,7 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 	if (! udev)
 		return -ENODEV;
 
+	pr_debug("%s port_status 0x%x\n", __func__, udev->port_status);
 	/* TODO - the logic on resume/reset etc is really
 	 *   just blindly copied from USBIP.  Make sure
 	 *   this eventually gets thoughtful review and testing. */
@@ -241,8 +251,10 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 		udev->port_status &= ~(1 << USB_PORT_FEAT_RESET);
 		hub->re_timeout = 0;
 
-		pr_debug(" enable rhport %d\n", rhport);
-		udev->port_status |= USB_PORT_STAT_ENABLE;
+		if (atomic_read(&udev->active)) {
+			pr_debug(" enable rhport %d\n", rhport);
+			udev->port_status |= USB_PORT_STAT_ENABLE;
+		}
 	}
 
 	((__le16 *) buf)[0] = cpu_to_le16(udev->port_status);

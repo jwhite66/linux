@@ -98,6 +98,7 @@ static ssize_t store_detach(struct device_driver *driver,
 		return count;
 	}
 
+	usbredir_device_disconnect(udev);
 	usbredir_device_deallocate(udev, true, true);
 
 	return count;

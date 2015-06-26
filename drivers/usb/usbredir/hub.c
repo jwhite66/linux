@@ -65,10 +65,12 @@ static void usbredir_hub_stop(struct usb_hcd *hcd)
 
 	pr_debug("usbredir_hub_stop %p\n", hub);
 
-	spin_lock(&hub->lock);
-
-	for (i = 0; i < hub->device_count && hub->devices; i++)
+	for (i = 0; i < hub->device_count && hub->devices; i++) {
+		usbredir_device_disconnect(hub->devices + i);
 		usbredir_device_deallocate(hub->devices + i, true, true);
+	}
+
+	spin_lock(&hub->lock);
 
 	if (hub->devices)
 		kfree(hub->devices);
@@ -111,7 +113,8 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 
 	if (!HCD_HW_ACCESSIBLE(hcd)) {
 		pr_debug("hw accessible flag not on?\n");
-		goto done;
+		spin_unlock(&hub->lock);
+		return 0;
 	}
 
 	/* check pseudo status register for each port */
@@ -134,11 +137,11 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 		spin_unlock(&udev->lock);
 	}
 
+	spin_unlock(&hub->lock);
+
 	if ((hcd->state == HC_STATE_SUSPENDED) && (changed == 1))
 		usb_hcd_resume_root_hub(hcd);
 
-done:
-	spin_unlock(&hub->lock);
 	return changed ? ret : 0;
 }
 
