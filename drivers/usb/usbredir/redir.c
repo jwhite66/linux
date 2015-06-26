@@ -77,9 +77,7 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	msg.msg_controllen = 0;
 	msg.msg_flags = MSG_NOSIGNAL;
 
-	pr_debug("redir_read: pid %d, count %d\n", current->pid, count);
 	rc = kernel_recvmsg(socket, &msg, &iov, 1, count, MSG_WAITALL);
-	pr_debug("redir_read: pid %d, rc %d\n", current->pid, rc);
 
 	return rc;
 }
@@ -363,8 +361,8 @@ static void redir_control_packet(void *priv,
 		return;
 	}
 
-pr_debug("JPW handling control packet response, id %ld\n", (long) id);
-pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
+//pr_debug("JPW handling control packet response, id %ld\n", (long) id);
+//pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
 //print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 
 	// TODO - handle more than this flavor...
@@ -402,12 +400,12 @@ static void redir_bulk_packet(void *priv,
 		return;
 	}
 
-pr_debug("JPW handling bulk packet response, id %ld\n", (long) id);
-pr_debug("ep %d, status %d, length %d\n", bulk_header->endpoint, bulk_header->status,
-	 bulk_header->length);
-pr_debug("stream_id %d, length_high %d\n", bulk_header->stream_id,
-	 bulk_header->length_high);
-pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
+//pr_debug("JPW handling bulk packet response, id %ld\n", (long) id);
+//pr_debug("ep %d, status %d, length %d\n", bulk_header->endpoint, bulk_header->status,
+//	 bulk_header->length);
+//pr_debug("stream_id %d, length_high %d\n", bulk_header->stream_id,
+//	 bulk_header->length_high);
+//pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
 //print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
 
 	// TODO - map statii correctly

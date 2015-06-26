@@ -38,8 +38,8 @@ struct urb *rx_pop_urb(struct usbredir_device *udev, int seqnum)
 		urb = uurb->urb;
 		status = urb->status;
 
-		pr_debug("usbredir: find urb %p vurb %p seqnum %u\n",
-			 urb, uurb, seqnum);
+		//pr_debug("usbredir: find urb %p vurb %p seqnum %u\n",
+		//	 urb, uurb, seqnum);
 
 		switch (status) {
 		case -ENOENT:

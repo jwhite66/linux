@@ -52,17 +52,17 @@ static int send_cmd(struct usbredir_device *udev)
 		struct urb *urb = uurb->urb;
 		__u8 type = usb_pipetype(urb->pipe);
 
-		pr_debug("JPW urb: [pipe %x|type %d|stream_id %u|status %d|",
-			urb->pipe, type, urb->stream_id, urb->status);
-		pr_debug("tflags 0x%x|mapped sgs %d|num_sgs %d|tbuflen %u|",
-			urb->transfer_flags, urb->num_mapped_sgs, urb->num_sgs,
-			urb->transfer_buffer_length);
-		pr_debug("complete %p|", urb->complete);
-		pr_debug("pipedevice %x|", usb_pipedevice(urb->pipe));
-		pr_debug("act len %u|st frame %d|num pack %d|int %d|err %d]\n",
-			urb->actual_length, urb->start_frame,
-			urb->number_of_packets, urb->interval,
-			urb->error_count);
+		//pr_debug("JPW urb: [pipe %x|type %d|stream_id %u|status %d|",
+		//	urb->pipe, type, urb->stream_id, urb->status);
+		//pr_debug("tflags 0x%x|mapped sgs %d|num_sgs %d|tbuflen %u|",
+		//	urb->transfer_flags, urb->num_mapped_sgs, urb->num_sgs,
+		//	urb->transfer_buffer_length);
+		//pr_debug("complete %p|", urb->complete);
+		//pr_debug("pipedevice %x|", usb_pipedevice(urb->pipe));
+		//pr_debug("act len %u|st frame %d|num pack %d|int %d|err %d]\n",
+		//	urb->actual_length, urb->start_frame,
+		//	urb->number_of_packets, urb->interval,
+		//	urb->error_count);
 
 		if (type == PIPE_CONTROL && urb->setup_packet) {
 			struct usb_ctrlrequest *ctrlreq =
@@ -78,8 +78,8 @@ static int send_cmd(struct usbredir_device *udev)
 			ctrl.index = le16_to_cpu(ctrlreq->wIndex);
 			ctrl.length = le16_to_cpu(ctrlreq->wLength);
 
-			pr_debug("control request to endpoint 0x%x:\n",
-				 ctrl.endpoint);
+			//pr_debug("control request to endpoint 0x%x:\n",
+			//	 ctrl.endpoint);
 
 			usbredirparser_send_control_packet(udev->parser,
 				uurb->seqnum, &ctrl,
@@ -99,8 +99,8 @@ static int send_cmd(struct usbredir_device *udev)
 			bulk.stream_id = urb->stream_id;
 			bulk.length_high = 0;
 
-			pr_debug("bulk request to endpoint 0x%x:\n",
-				 bulk.endpoint);
+			//pr_debug("bulk request to endpoint 0x%x:\n",
+			//	 bulk.endpoint);
 
 			usbredirparser_send_bulk_packet(udev->parser,
 				uurb->seqnum, &bulk,
@@ -159,8 +159,8 @@ void tx_urb(struct usbredir_device *udev, struct urb *urb)
 
 	uurb = kzalloc(sizeof(struct usbredir_urb), GFP_ATOMIC);
 	if (!uurb) {
-		//usbredir_event_add(dev, VDEV_EVENT_ERROR_MALLOC);
-		// TODO - find a different way to signal this failure
+		pr_err("Error allocating a usbredir_urb structure\n");
+		usbredir_device_deallocate(udev, true, true);
 		return;
 	}
 
