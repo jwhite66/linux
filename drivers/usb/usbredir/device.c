@@ -172,7 +172,7 @@ int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 {
 	struct usbredir_device *udev = validate_and_lock(hub, rhport);
 	if (! udev)
-		return -EPIPE;
+		return -ENODEV;
 
 	switch (wValue) {
 	case USB_PORT_FEAT_SUSPEND:
@@ -219,7 +219,7 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 {
 	struct usbredir_device *udev = validate_and_lock(hub, rhport);
 	if (! udev)
-		return -EPIPE;
+		return -ENODEV;
 
 	/* TODO - the logic on resume/reset etc is really
 	 *   just blindly copied from USBIP.  Make sure
@@ -262,7 +262,7 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 {
 	struct usbredir_device *udev = validate_and_lock(hub, rhport);
 	if (! udev)
-		return -EPIPE;
+		return -ENODEV;
 
 	switch (wValue) {
 	case USB_PORT_FEAT_SUSPEND:
