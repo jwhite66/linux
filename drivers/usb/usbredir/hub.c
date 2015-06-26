@@ -48,7 +48,7 @@ static int usbredir_hub_start(struct usb_hcd *hcd)
 	}
 
 	for (i = 0; i < hub->device_count; i++)
-		usbredir_device_init(hub->devices + i, i);
+		usbredir_device_init(hub->devices + i, i, hub);
 
 	hcd->power_budget = 0; /* no limit */
 	hcd->uses_new_polling = 1;
@@ -68,7 +68,7 @@ static void usbredir_hub_stop(struct usb_hcd *hcd)
 	spin_lock(&hub->lock);
 
 	for (i = 0; i < hub->device_count && hub->devices; i++)
-		usbredir_device_destroy(hub->devices + i);
+		usbredir_device_deallocate(hub->devices + i);
 
 	if (hub->devices)
 		kfree(hub->devices);
@@ -118,7 +118,6 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 	for (rhport = 0; rhport < hub->device_count; rhport++) {
 		struct usbredir_device *udev = hub->devices + rhport;
 		spin_lock(&udev->lock);
-		/* TODO - this left shift 16 puzzles me... */
 		if (udev->port_status &
 			((  USB_PORT_STAT_C_CONNECTION
 			  | USB_PORT_STAT_C_ENABLE
@@ -266,7 +265,7 @@ static int usbredir_register_hub(struct usbredir_hub *hub)
 
 	ret = platform_device_register(&hub->pdev);
 	if (ret) {
-		pr_err("Unable to register platform device %d", hub->id);
+		pr_err("Unable to register platform device %d\n", hub->id);
 		return ret;
 	}
 
@@ -375,7 +374,7 @@ dec_exit:
 
 void usbredir_hub_destroy(struct usbredir_hub *hub)
 {
-	pr_err("TODO better implement destroy of %p\n", hub);
+	usbredir_hub_stop(hub->hcd);
 	usbredir_destroy_hcd(hub);
 	usbredir_unregister_hub(hub);
 }
@@ -392,7 +391,7 @@ struct usbredir_device *usbredir_hub_find_device(const char *devid)
 		for (i = 0; i < hub->device_count; i++) {
 			struct usbredir_device *udev = hub->devices + i;
 			spin_lock(&udev->lock);
-			if (udev->status != VDEV_ST_NULL &&
+			if (atomic_read(&udev->active) &&
 			    udev->devid &&
 			    strcmp(udev->devid, devid) == 0)
 				ret = udev;
@@ -411,7 +410,6 @@ struct usbredir_device *usbredir_hub_find_device(const char *devid)
 struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 						     struct socket *socket)
 {
-	char pname[32];
 	int found = 0;
 	struct usbredir_hub *hub;
 	struct usbredir_device *udev;
@@ -423,7 +421,7 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 		for (i = 0; i < hub->device_count; i++) {
 			udev = hub->devices + i;
 			spin_lock(&udev->lock);
-			if (udev->status == VDEV_ST_NULL) {
+			if (! atomic_read(&udev->active)) {
 				found++;
 				break;
 			}
@@ -443,17 +441,7 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 		return usbredir_hub_allocate_device(devid, socket);
 	}
 
-	udev->devid  = kstrdup(devid, GFP_ATOMIC);
-	udev->status = VDEV_ST_NOTASSIGNED;
-	udev->socket = socket;
-
-	udev->parser = redir_parser_init(udev);
-	udev->hub = hub;
-
-	sprintf(pname, "usbredir/rx:%d", udev->rhport);
-	udev->rx = kthread_run(rx_loop, udev, pname);
-	sprintf(pname, "usbredir/tx:%d", udev->rhport);
-	udev->tx = kthread_run(tx_loop, udev, pname);
+	usbredir_device_allocate(udev, devid, socket);
 
 	spin_unlock(&udev->lock);
 	spin_unlock(&hub->lock);
@@ -461,6 +449,37 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 	return udev;
 }
 
+int usbredir_hub_show_global_status(char *out)
+{
+	int count = 0;
+	int active = 0;
+	int used = 0;
+
+	struct usbredir_hub *hub;
+	struct usbredir_device *udev;
+	int i;
+
+	spin_lock(&hubs_lock);
+	list_for_each_entry(hub, &hubs, list) {
+		spin_lock(&hub->lock);
+		for (i = 0; i < hub->device_count; count++, i++) {
+			udev = hub->devices + i;
+			spin_lock(&udev->lock);
+			active += atomic_read(&udev->active);
+			if (udev->usb_dev)
+				used++;
+			spin_unlock(&udev->lock);
+		}
+		spin_unlock(&hub->lock);
+	}
+	spin_unlock(&hubs_lock);
+
+	sprintf(out, "%d/%d hubs. %d/%d devices (%d active, %d used).\n",
+			atomic_read(&hub_count), max_hubs,
+			count, max_hubs * devices_per_hub, active, used);
+
+	return strlen(out);
+}
 
 
 int usbredir_hub_init(void)
@@ -474,4 +493,12 @@ int usbredir_hub_init(void)
 
 void usbredir_hub_exit(void)
 {
+	struct usbredir_hub *hub;
+
+	spin_lock(&hubs_lock);
+	list_for_each_entry(hub, &hubs, list) {
+		usbredir_hub_destroy(hub);
+		// TODO list remove, kfree
+	}
+	spin_unlock(&hubs_lock);
 }

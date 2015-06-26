@@ -46,15 +46,11 @@ int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 	udev = hub->devices + urb->dev->portnum - 1;
 
 	/* refuse enqueue for dead connection */
-	spin_lock(&udev->lock);
-	if (udev->status == VDEV_ST_NULL ||
-	    udev->status == VDEV_ST_ERROR) {
+	if (! atomic_read(&udev->active)) {
 		dev_err(dev, "enqueue for inactive port %d\n", udev->rhport);
-		spin_unlock(&udev->lock);
 		spin_unlock(&hub->lock);
 		return -ENODEV;
 	}
-	spin_unlock(&udev->lock);
 
 	ret = usb_hcd_link_urb_to_ep(hcd, urb);
 	if (ret)
@@ -88,11 +84,6 @@ int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 
 			usb_put_dev(udev->usb_dev);
 			udev->usb_dev = usb_get_dev(urb->dev);
-
-			// TODO - why not lock higher?
-			spin_lock(&udev->lock);
-			udev->status = VDEV_ST_USED;
-			spin_unlock(&udev->lock);
 
 			if (urb->status == -EINPROGRESS) {
 				/* This request is successfully completed. */

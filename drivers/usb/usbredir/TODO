@@ -1,4 +1,6 @@
 TODO:
+  *  Test connect, and then disconnect for cleanup
+  *  Test destroying a device via the detach function
   *  Current code has no event thread, which, afaict, was just used
      to tear the device down.  Can we do without it?
   *  Either way, we need to implement tear down code

@@ -27,44 +27,7 @@
 /* Sysfs entry to show port status */
 static ssize_t status_show(struct device_driver *driver, char *out)
 {
-	char *s = out;
-#if defined(HACK_TEMP_HACK)
-	int i;
-	struct usbredir_device *vdev;
-
-	BUG_ON(!the_controller || !out);
-
-	spin_lock(&the_controller->lock);
-
-	out += sprintf(out,
-		       "prt sta spd %40.40s %16s busid\n",
-		       "devid", "socket");
-	for (i = 0; i < USBREDIR_NPORTS; i++) {
-		vdev = port_to_vdev(the_controller, i);
-		spin_lock(&vdev->lock);
-		out += sprintf(out, "%03u %03u ", i, vdev->status);
-
-		if (vdev->status == VDEV_ST_USED) {
-			out += sprintf(out, "%03u %40.40s ",
-				       vdev->connect_header.speed, vdev->devid);
-			out += sprintf(out, "%16p ", vdev->socket);
-			out += sprintf(out, "%s", dev_name(&vdev->udev->dev));
-
-		} else {
-			out += sprintf(out, "000 "
-				"---------------------------------------- "
-				"0000000000000000 0-0");
-		}
-
-		out += sprintf(out, "\n");
-		spin_unlock(&vdev->lock);
-	}
-
-	spin_unlock(&the_controller->lock);
-
-#endif
-	out += sprintf(out, "JPW hacking show\n");
-	return out - s;
+	return usbredir_hub_show_global_status(out);
 }
 static DRIVER_ATTR_RO(status);
 

@@ -29,7 +29,7 @@
 #include "usbredir.h"
 
 
-#define TODO_IMPLEMENT pr_err("Error: %s unimplemented.", __FUNCTION__);
+#define TODO_IMPLEMENT pr_err("Error: %s unimplemented.\n", __FUNCTION__);
 
 static void redir_log(void *priv, int level, const char *msg)
 {
@@ -78,7 +78,9 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	msg.msg_controllen = 0;
 	msg.msg_flags = MSG_NOSIGNAL;
 
+	pr_debug("redir_read: pid %d, count %d\n", current->pid, count);
 	rc = kernel_recvmsg(socket, &msg, &iov, 1, count, MSG_WAITALL);
+	pr_debug("redir_read: pid %d, rc %d\n", current->pid, rc);
 
 	return rc;
 }

@@ -71,23 +71,19 @@ struct urb *rx_pop_urb(struct usbredir_device *udev, int seqnum)
 
 int rx_loop(void *data)
 {
-	struct usbredir_device *vdev = data;
+	struct usbredir_device *udev = data;
 	int rc;
 
-	while (!kthread_should_stop()) {
-		//if (usbredir_event_happened(vdev))
-	        //		break;
-		//		TODO: find a better way to see if we're done
-
-		rc = usbredirparser_do_read(vdev->parser);
+	while (!kthread_should_stop() && atomic_read(&udev->active)) {
+		rc = usbredirparser_do_read(udev->parser);
 		if (rc != -EAGAIN) {
-			pr_info("usbredir/rx:%d connection closed",
-				vdev->rhport);
-			//usbredir_event_add(vdev, VDEV_EVENT_DOWN);
+			pr_info("usbredir/rx:%d connection closed\n",
+				udev->rhport);
 			break;
 		}
 	}
-	// TODO - signal that we're done in some way?
+
+	usbredir_device_deallocate(udev);
 
 	return 0;
 }

@@ -174,9 +174,9 @@ void tx_urb(struct usbredir_device *udev, struct urb *urb)
 	urb->hcpriv = (void *) uurb;
 
 	list_add_tail(&uurb->list, &udev->urblist_tx);
-
-	wake_up(&udev->waitq_tx);
 	spin_unlock(&udev->lists_lock);
+
+	wake_up_interruptible(&udev->waitq_tx);
 }
 
 
@@ -184,7 +184,7 @@ int tx_loop(void *data)
 {
 	struct usbredir_device *udev = data;
 
-	while (!kthread_should_stop()) {
+	while (!kthread_should_stop() && atomic_read(&udev->active)) {
 		if (usbredirparser_has_data_to_write(udev->parser)) {
 			if (usbredirparser_do_write(udev->parser)) {
 				// TODO - need to think about this
@@ -205,6 +205,7 @@ int tx_loop(void *data)
 			 usbredirparser_has_data_to_write(udev->parser)));
 	}
 
-	// TODO - signal we're done?
+	usbredir_device_deallocate(udev);
+
 	return 0;
 }

@@ -23,27 +23,15 @@
 #define USBREDIR_MODULE_VERSION	"1.0"
 
 
-/* TODO - This should probably be over in include/uapi/linux */
-/* usbredir device status - exported in device sysfs status */
-/* TODO - why this status, and not just reuse port_status */
-enum usbredir_device_status {
-	/* vdev does not connect a remote device. */
-	VDEV_ST_NULL,
-	/* vdev is used, but the USB address is not assigned yet */
-	VDEV_ST_NOTASSIGNED,
-	/* vdev is used */
-	VDEV_ST_USED,
-	VDEV_ST_ERROR
-};
-
 struct usbredir_device {
-	struct usb_device *usb_dev;
-	struct usbredir_hub *hub;
-
 	// TODO - a thoughtful look into the locks is overdue
 	spinlock_t lock;
 
-	enum usbredir_device_status status;
+	atomic_t active;
+
+	struct usb_device *usb_dev;
+	struct usbredir_hub *hub;
+
 	u32 port_status;
 
 	struct socket *socket;
@@ -140,11 +128,16 @@ void usbredir_hub_destroy(struct usbredir_hub *hub);
 struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 						     struct socket *socket);
 struct usbredir_device *usbredir_hub_find_device(const char *devid);
+int usbredir_hub_show_global_status(char *out);
 
 
 /* device.c */
-void usbredir_device_init(struct usbredir_device *udev, int port);
-void usbredir_device_destroy(struct usbredir_device *udev);
+void usbredir_device_init(struct usbredir_device *udev, int port,
+			  struct usbredir_hub *hub);
+void usbredir_device_allocate(struct usbredir_device *udev,
+			      const char *devid,
+			      struct socket *socket);
+void usbredir_device_deallocate(struct usbredir_device *udev);
 void usbredir_device_connect(struct usbredir_device *udev);
 int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue);

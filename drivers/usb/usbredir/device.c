@@ -18,14 +18,21 @@
  * USA.
  */
 
+#include <linux/kthread.h>
+#include <linux/slab.h>
+#include <linux/file.h>
+#include <linux/net.h>
+
 #include "usbredir.h"
 
-void usbredir_device_init(struct usbredir_device *udev, int port)
+void usbredir_device_init(struct usbredir_device *udev, int port,
+			  struct usbredir_hub *hub)
 {
 	memset(udev, 0, sizeof(*udev));
 
 	udev->rhport = port;
-	udev->status = VDEV_ST_NULL;
+	udev->hub = hub;
+	atomic_set(&udev->active, 0);
 	spin_lock_init(&udev->lock);
 	spin_lock_init(&udev->lists_lock);
 
@@ -34,12 +41,72 @@ void usbredir_device_init(struct usbredir_device *udev, int port)
 	INIT_LIST_HEAD(&udev->unlink_tx);
 	INIT_LIST_HEAD(&udev->unlink_rx);
 
-
 	init_waitqueue_head(&udev->waitq_tx);
 }
 
-void usbredir_device_destroy(struct usbredir_device *udev)
+/* Presumes udev->lock is held on entry */
+void usbredir_device_allocate(struct usbredir_device *udev,
+			      const char *devid,
+			      struct socket *socket)
 {
+	char pname[32];
+	udev->parser = redir_parser_init(udev);
+	if (! udev->parser) {
+		pr_err("Unable to allocate USBREDIR parser.\n");
+		return;
+	}
+
+	udev->devid  = kstrdup(devid, GFP_ATOMIC);
+	atomic_set(&udev->active, 1);
+	udev->socket = socket;
+
+
+	sprintf(pname, "usbredir/rx:%d", udev->rhport);
+	udev->rx = kthread_run(rx_loop, udev, pname);
+	sprintf(pname, "usbredir/tx:%d", udev->rhport);
+	udev->tx = kthread_run(tx_loop, udev, pname);
+}
+
+
+void usbredir_device_deallocate(struct usbredir_device *udev)
+{
+	pr_debug("destroy_device %p/%d\n", udev, udev->rhport);
+	if (! atomic_read(&udev->active))
+		return;
+
+	spin_lock(&udev->lock);
+
+	usb_put_dev(udev->usb_dev);
+	udev->usb_dev = NULL;
+
+	if (udev->devid) {
+		kfree(udev->devid);
+		udev->devid = NULL;
+	}
+
+	if (udev->parser) {
+		usbredirparser_destroy(udev->parser);
+		udev->parser = NULL;
+	}
+
+	if (udev->socket) {
+		// TODO - close?
+		sockfd_put(udev->socket);
+		udev->socket = NULL;
+	}
+
+	// TODO urblist_xx, unlink_xx
+	atomic_set(&udev->active, 0);
+
+	spin_unlock(&udev->lock);
+
+	/* Note:  calling kthread_sop on the tx and rx threads
+	 *        can lead to a race condition, as kthread_stop
+	 *        waits for a thread to exit before returning.
+	 *        We rely on each thread to see that their device
+	 *        is no longer active and to self destruct. */
+
+	wake_up_interruptible(&udev->waitq_tx);
 }
 
 static u32 speed_to_portflag(enum usb_device_speed speed)
@@ -165,11 +232,9 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 		udev->port_status &= ~(1 << USB_PORT_FEAT_RESET);
 		hub->re_timeout = 0;
 
-		if (udev->status == VDEV_ST_NOTASSIGNED) {
+		if (atomic_read(&udev->active) && ! udev->usb_dev) {
 			pr_debug(
-				" enable rhport %d (status %u)\n",
-				rhport,
-				udev->status);
+				" enable rhport %d\n", rhport);
 			udev->port_status |= USB_PORT_STAT_ENABLE;
 		}
 	}
