@@ -12,10 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307,
- * USA.
  */
 
 #include <linux/file.h>
@@ -93,8 +89,9 @@ static ssize_t store_detach(struct device_driver *driver,
 	pr_debug("detach devid(%s)\n", devid);
 
 	udev = usbredir_hub_find_device(devid);
-	if (! udev) {
-		pr_warning("USBREDIR device %s detach requested, but not found\n", devid);
+	if (!udev) {
+		pr_warn("USBREDIR device %s detach requested, but not found\n",
+			devid);
 		return count;
 	}
 
@@ -109,6 +106,7 @@ static DRIVER_ATTR(detach, S_IWUSR, NULL, store_detach);
 int usbredir_sysfs_register(struct device_driver *driver)
 {
 	int ret;
+
 	ret = driver_create_file(driver, &driver_attr_status);
 	if (ret)
 		return ret;

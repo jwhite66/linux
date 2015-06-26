@@ -10215,6 +10215,12 @@ S:	Maintained
 F:	drivers/usb/usbip/
 F:	tools/usb/usbip/
 
+USBREDIR IP DRIVER
+M:	Jeremy White <jwhite@codeweavers.com>
+L:	linux-usb@vger.kernel.org
+S:	Maintained
+F:	drivers/usb/usbredir/
+
 USB PEGASUS DRIVER
 M:	Petko Manolov <petkan@nucleusys.com>
 L:	linux-usb@vger.kernel.org

@@ -11,10 +11,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307,
- * USA.
  */
 
 
@@ -29,7 +25,7 @@
 #include "usbredir.h"
 
 
-#define TODO_IMPLEMENT pr_err("Error: %s unimplemented.\n", __FUNCTION__);
+#define TODO_IMPLEMENT pr_err("Error: %s unimplemented.\n", __func__);
 
 static void redir_log(void *priv, int level, const char *msg)
 {
@@ -60,12 +56,12 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	struct socket *socket;
 	int rc;
 
-	if (kthread_should_stop() || ! atomic_read(&udev->active))
+	if (kthread_should_stop() || !atomic_read(&udev->active))
 		return -ESRCH;
 
 	spin_lock(&udev->lock);
 	socket = udev->socket;
-	// TODO - reference/dereference the socket?
+	/* TODO - reference/dereference the socket? */
 	spin_unlock(&udev->lock);
 
 	socket->sk->sk_allocation = GFP_NOIO;
@@ -102,9 +98,9 @@ static int redir_write(void *priv, uint8_t *data, int count)
 
 	rc = kernel_sendmsg(socket, &msg, &iov, 1, count);
 	if (rc != count) {
-		// TODO - is a short write truly an error condition?
+		/* TODO - is a short write truly an error condition? */
 		pr_err("Error %d writing %d bytes\n", rc, count);
-		// TODO - see if event thread can go usbredir_event_add(dev, VDEV_EVENT_ERROR_TCP);
+		/* TODO - do we need a better way to abort? */
 		return -1;
 	}
 
@@ -116,13 +112,14 @@ static int redir_write(void *priv, uint8_t *data, int count)
 static void *redir_alloc_lock(void)
 {
 	struct semaphore *s = kmalloc(sizeof(*s), GFP_KERNEL);
+
 	sema_init(s, 1);
 	return s;
 }
 
 static void redir_lock(void *lock)
 {
-	while(down_interruptible((struct semaphore *) lock))
+	while (down_interruptible((struct semaphore *) lock))
 		;
 }
 
@@ -144,22 +141,21 @@ static void redir_free_lock(void *lock)
    guarenteed to be that of the callback.
 
    Control packets: */
-static void redir_hello(void *priv,
-    struct usb_redir_hello_header *hello)
+static void redir_hello(void *priv, struct usb_redir_hello_header *hello)
 {
 	pr_debug("Hello!\n");
 }
 
 static void redir_device_connect(void *priv,
-    struct usb_redir_device_connect_header *device_connect)
+	struct usb_redir_device_connect_header *device_connect)
 {
 	struct usbredir_device *udev = (struct usbredir_device *) priv;
 
 	pr_debug("  connect: class %2d subclass %2d protocol %2d",
-           device_connect->device_class, device_connect->device_subclass,
-           device_connect->device_protocol);
+		device_connect->device_class, device_connect->device_subclass,
+		device_connect->device_protocol);
 	pr_debug("  vendor 0x%04x product %04x\n",
-           device_connect->vendor_id, device_connect->product_id);
+		device_connect->vendor_id, device_connect->product_id);
 
 	spin_lock(&udev->lock);
 	udev->connect_header = *device_connect;
@@ -179,7 +175,7 @@ static void redir_reset(void *priv)
 }
 
 static void redir_interface_info(void *priv,
-    struct usb_redir_interface_info_header *info)
+	struct usb_redir_interface_info_header *info)
 {
 	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	int i;
@@ -200,7 +196,7 @@ static void redir_interface_info(void *priv,
 #define I2EP(i) (((i & 0x10) << 3) | (i & 0x0f))
 
 static void redir_ep_info(void *priv,
-    struct usb_redir_ep_info_header *ep_info)
+	struct usb_redir_ep_info_header *ep_info)
 {
 	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	int i;
@@ -219,7 +215,8 @@ static void redir_ep_info(void *priv,
 }
 
 static void redir_set_configuration(void *priv,
-    uint64_t id, struct usb_redir_set_configuration_header *set_configuration)
+	uint64_t id,
+	struct usb_redir_set_configuration_header *set_configuration)
 {
 	TODO_IMPLEMENT;
 }
@@ -230,79 +227,95 @@ static void redir_get_configuration(void *priv, uint64_t id)
 }
 
 static void redir_configuration_status(void *priv,
-    uint64_t id, struct usb_redir_configuration_status_header *configuration_status)
+	uint64_t id,
+	struct usb_redir_configuration_status_header *configuration_status)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_set_alt_setting(void *priv,
-    uint64_t id, struct usb_redir_set_alt_setting_header *set_alt_setting)
+	uint64_t id,
+	struct usb_redir_set_alt_setting_header *set_alt_setting)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_get_alt_setting(void *priv,
-    uint64_t id, struct usb_redir_get_alt_setting_header *get_alt_setting)
+	uint64_t id,
+	struct usb_redir_get_alt_setting_header *get_alt_setting)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_alt_setting_status(void *priv,
-    uint64_t id, struct usb_redir_alt_setting_status_header *alt_setting_status)
+	uint64_t id,
+	struct usb_redir_alt_setting_status_header *alt_setting_status)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_start_iso_stream(void *priv,
-    uint64_t id, struct usb_redir_start_iso_stream_header *start_iso_stream)
+	uint64_t id,
+	struct usb_redir_start_iso_stream_header *start_iso_stream)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_stop_iso_stream(void *priv,
-    uint64_t id, struct usb_redir_stop_iso_stream_header *stop_iso_stream)
+	uint64_t id,
+	struct usb_redir_stop_iso_stream_header *stop_iso_stream)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_iso_stream_status(void *priv,
-    uint64_t id, struct usb_redir_iso_stream_status_header *iso_stream_status)
+	uint64_t id,
+	struct usb_redir_iso_stream_status_header *iso_stream_status)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_start_interrupt_receiving(void *priv,
-    uint64_t id, struct usb_redir_start_interrupt_receiving_header *start_interrupt_receiving)
+	uint64_t id,
+	struct usb_redir_start_interrupt_receiving_header
+		*start_interrupt_receiving)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_stop_interrupt_receiving(void *priv,
-    uint64_t id, struct usb_redir_stop_interrupt_receiving_header *stop_interrupt_receiving)
+	uint64_t id,
+	struct usb_redir_stop_interrupt_receiving_header
+		*stop_interrupt_receiving)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_interrupt_receiving_status(void *priv,
-    uint64_t id, struct usb_redir_interrupt_receiving_status_header *interrupt_receiving_status)
+	uint64_t id,
+	struct usb_redir_interrupt_receiving_status_header
+		*interrupt_receiving_status)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_alloc_bulk_streams(void *priv,
-    uint64_t id, struct usb_redir_alloc_bulk_streams_header *alloc_bulk_streams)
+	uint64_t id,
+	struct usb_redir_alloc_bulk_streams_header *alloc_bulk_streams)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_free_bulk_streams(void *priv,
-    uint64_t id, struct usb_redir_free_bulk_streams_header *free_bulk_streams)
+	uint64_t id,
+	struct usb_redir_free_bulk_streams_header *free_bulk_streams)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_bulk_streams_status(void *priv,
-    uint64_t id, struct usb_redir_bulk_streams_status_header *bulk_streams_status)
+	uint64_t id,
+	struct usb_redir_bulk_streams_status_header *bulk_streams_status)
 {
 	TODO_IMPLEMENT;
 }
@@ -318,7 +331,7 @@ static void redir_filter_reject(void *priv)
 }
 
 static void redir_filter_filter(void *priv,
-    struct usbredirfilter_rule *rules, int rules_count)
+	struct usbredirfilter_rule *rules, int rules_count)
 {
 	TODO_IMPLEMENT;
 }
@@ -329,27 +342,31 @@ static void redir_device_disconnect_ack(void *priv)
 }
 
 static void redir_start_bulk_receiving(void *priv,
-    uint64_t id, struct usb_redir_start_bulk_receiving_header *start_bulk_receiving)
+	uint64_t id,
+	struct usb_redir_start_bulk_receiving_header *start_bulk_receiving)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_stop_bulk_receiving(void *priv,
-    uint64_t id, struct usb_redir_stop_bulk_receiving_header *stop_bulk_receiving)
+	uint64_t id,
+	struct usb_redir_stop_bulk_receiving_header *stop_bulk_receiving)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_bulk_receiving_status(void *priv,
-    uint64_t id, struct usb_redir_bulk_receiving_status_header *bulk_receiving_status)
+	uint64_t id,
+	struct usb_redir_bulk_receiving_status_header *bulk_receiving_status)
 {
 	TODO_IMPLEMENT;
 }
 
 
 static void redir_control_packet(void *priv,
-    uint64_t id, struct usb_redir_control_packet_header *control_header,
-    uint8_t *data, int data_len)
+	uint64_t id,
+	struct usb_redir_control_packet_header *control_header,
+	uint8_t *data, int data_len)
 {
 	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	struct urb *urb;
@@ -361,12 +378,12 @@ static void redir_control_packet(void *priv,
 		return;
 	}
 
-//pr_debug("JPW handling control packet response, id %ld\n", (long) id);
-//pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
-//print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
+/*pr_debug("JPW handling control packet response, id %ld\n", (long) id);
+pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
+print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len); */
 
-	// TODO - handle more than this flavor...
-	// TODO - map statii correctly
+	/* TODO - handle more than this flavor... */
+	/* TODO - map statii correctly */
 	urb->status = control_header->status;
 	if (usb_pipein(urb->pipe)) {
 		urb->actual_length = min((u32) data_len,
@@ -382,13 +399,14 @@ static void redir_control_packet(void *priv,
 	usb_hcd_unlink_urb_from_ep(udev->hub->hcd, urb);
 	spin_unlock(&udev->hub->lock);
 
-	// TODO - why not inside the lock?
+	/* TODO - why not inside the lock? */
 	usb_hcd_giveback_urb(udev->hub->hcd, urb, urb->status);
 }
 
 static void redir_bulk_packet(void *priv,
-    uint64_t id, struct usb_redir_bulk_packet_header *bulk_header,
-    uint8_t *data, int data_len)
+	uint64_t id,
+	struct usb_redir_bulk_packet_header *bulk_header,
+	uint8_t *data, int data_len)
 {
 	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	struct urb *urb;
@@ -400,15 +418,15 @@ static void redir_bulk_packet(void *priv,
 		return;
 	}
 
-//pr_debug("JPW handling bulk packet response, id %ld\n", (long) id);
-//pr_debug("ep %d, status %d, length %d\n", bulk_header->endpoint, bulk_header->status,
-//	 bulk_header->length);
-//pr_debug("stream_id %d, length_high %d\n", bulk_header->stream_id,
-//	 bulk_header->length_high);
-//pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
-//print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len);
+/*pr_debug("JPW handling bulk packet response, id %ld\n", (long) id);
+pr_debug("ep %d, status %d, length %d\n", bulk_header->endpoint, bulk_header->status,
+	 bulk_header->length);
+pr_debug("stream_id %d, length_high %d\n", bulk_header->stream_id,
+	 bulk_header->length_high);
+pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length, data_len);
+print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len); */
 
-	// TODO - map statii correctly
+	/* TODO - map statii correctly */
 	urb->status = bulk_header->status;
 	if (usb_pipein(urb->pipe)) {
 		urb->actual_length = min((u32) data_len,
@@ -420,40 +438,42 @@ static void redir_bulk_packet(void *priv,
 		urb->actual_length = bulk_header->length;
 	}
 
-	// TODO - what to do with length, stream_id, and length_high
-	// TODO - handle more than this flavor...
+	/* TODO - what to do with length, stream_id, and length_high */
+	/* TODO - handle more than this flavor... */
 
 	spin_lock(&udev->hub->lock);
 	usb_hcd_unlink_urb_from_ep(udev->hub->hcd, urb);
 	spin_unlock(&udev->hub->lock);
 
-	// TODO - why not inside the lock?
+	/* TODO - why not inside the lock? */
 	usb_hcd_giveback_urb(udev->hub->hcd, urb, urb->status);
 }
 
 static void redir_iso_packet(void *priv,
-    uint64_t id, struct usb_redir_iso_packet_header *iso_header,
-    uint8_t *data, int data_len)
+	uint64_t id,
+	struct usb_redir_iso_packet_header *iso_header,
+	uint8_t *data, int data_len)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_interrupt_packet(void *priv,
-    uint64_t id, struct usb_redir_interrupt_packet_header *interrupt_header,
-    uint8_t *data, int data_len)
+	uint64_t id,
+	struct usb_redir_interrupt_packet_header *interrupt_header,
+	uint8_t *data, int data_len)
 {
 	TODO_IMPLEMENT;
 }
 
 static void redir_buffered_bulk_packet(void *priv, uint64_t id,
-    struct usb_redir_buffered_bulk_packet_header *buffered_bulk_header,
-    uint8_t *data, int data_len)
+	struct usb_redir_buffered_bulk_packet_header *buffered_bulk_header,
+	uint8_t *data, int data_len)
 {
 	TODO_IMPLEMENT;
 }
 
 
-struct usbredirparser * redir_parser_init(void *priv)
+struct usbredirparser *redir_parser_init(void *priv)
 {
 	struct usbredirparser *parser;
 	char version[40];
@@ -508,7 +528,7 @@ struct usbredirparser * redir_parser_init(void *priv)
 	parser->buffered_bulk_packet_func = redir_buffered_bulk_packet;
 
 	memset(caps, 0, sizeof(caps));
-	// TODO - figure out which of these we really can use
+	/* TODO - figure out which of these we really can use */
 #if defined(USE_ALL_CAPS)
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_bulk_streams);
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_connect_device_version);

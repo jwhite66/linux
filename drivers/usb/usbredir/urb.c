@@ -12,10 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307,
- * USA.
  */
 
 #include <linux/slab.h>
@@ -51,7 +47,7 @@ int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 	udev = hub->devices + urb->dev->portnum - 1;
 
 	/* refuse enqueue for dead connection */
-	if (! atomic_read(&udev->active)) {
+	if (!atomic_read(&udev->active)) {
 		dev_err(dev, "enqueue for inactive port %d\n", udev->rhport);
 		spin_unlock(&hub->lock);
 		return -ENODEV;
@@ -153,7 +149,7 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		return 0;
 	}
 
-	// TODO - this is not tidy...
+	/* TODO - this is not tidy... */
 	{
 		int ret = 0;
 
@@ -182,7 +178,7 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
 		usb_hcd_unlink_urb_from_ep(hcd, urb);
 
-		// TODO - why the unlock?
+		/* TODO - why the unlock? */
 		spin_unlock(&hub->lock);
 		usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
 		spin_lock(&hub->lock);
@@ -198,7 +194,7 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		if (!unlink) {
 			spin_unlock(&udev->lists_lock);
 			spin_unlock(&hub->lock);
-			//usbredir_event_add(vdev, VDEV_EVENT_ERROR_MALLOC);
+			/* TODO complain somehow... */
 			return -ENOMEM;
 		}
 

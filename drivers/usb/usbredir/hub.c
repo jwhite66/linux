@@ -12,10 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307,
- * USA.
  */
 
 #include <linux/slab.h>
@@ -40,9 +36,9 @@ static int usbredir_hub_start(struct usb_hcd *hcd)
 	spin_lock(&hub->lock);
 
 	hub->device_count = devices_per_hub;
-	hub->devices = kzalloc(hub->device_count * sizeof(*hub->devices),
+	hub->devices = kcalloc(hub->device_count, sizeof(*hub->devices),
 			       GFP_ATOMIC);
-	if (! hub->devices) {
+	if (!hub->devices) {
 		spin_unlock(&hub->lock);
 		return -ENOMEM;
 	}
@@ -72,8 +68,7 @@ static void usbredir_hub_stop(struct usb_hcd *hcd)
 
 	spin_lock(&hub->lock);
 
-	if (hub->devices)
-		kfree(hub->devices);
+	kfree(hub->devices);
 	hub->devices = NULL;
 	hub->device_count = 0;
 
@@ -82,7 +77,7 @@ static void usbredir_hub_stop(struct usb_hcd *hcd)
 
 static int get_frame_number(struct usb_hcd *hcd)
 {
-	pr_err("get_frame_number: Not yet implemented\n"); // TODO
+	pr_err("get_frame_number: Not yet implemented\n"); /* TODO */
 	return 0;
 }
 
@@ -122,7 +117,7 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 		struct usbredir_device *udev = hub->devices + rhport;
 		spin_lock(&udev->lock);
 		if (udev->port_status &
-			((  USB_PORT_STAT_C_CONNECTION
+			((USB_PORT_STAT_C_CONNECTION
 			  | USB_PORT_STAT_C_ENABLE
 			  | USB_PORT_STAT_C_SUSPEND
 			  | USB_PORT_STAT_C_OVERCURRENT
@@ -149,10 +144,10 @@ static inline void usbredir_hub_descriptor(struct usbredir_hub *hub,
 					   struct usb_hub_descriptor *desc)
 {
 	memset(desc, 0, sizeof(*desc));
-// TODO - where do these magic numbers come from?
+/* TODO - where do these magic numbers come from? */
 	desc->bDescriptorType = 0x29;
 	desc->bDescLength = 9;
-	desc->wHubCharacteristics = __constant_cpu_to_le16(
+	desc->wHubCharacteristics = cpu_to_le16(
 		HUB_CHAR_INDV_PORT_LPSM | HUB_CHAR_COMMON_OCPM);
 	spin_lock(&hub->lock);
 	desc->bNbrPorts = hub->device_count;
@@ -168,8 +163,8 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	int             ret = 0;
 	int		rhport;
 
-	pr_debug("usbredir_hub_control "
-		 "[hcd %p|typeReq %x|wValue %x|wIndex%u|wLength %u]\n",
+	pr_debug("usbredir_hub_control ");
+	pr_debug("[hcd %p|typeReq %x|wValue %x|wIndex%u|wLength %u]\n",
 		 hcd, typeReq, wValue, wIndex, wLength);
 
 	if (!HCD_HW_ACCESSIBLE(hcd))
@@ -287,7 +282,7 @@ static struct hc_driver usbredir_hc_driver = {
 	.product_desc	= driver_desc,
 	.hcd_priv_size	= sizeof(struct usbredir_hub *),
 
-	// TODO = what other flags are available and what of USB3?
+	/* TODO = what other flags are available and what of USB3? */
 	.flags		= HCD_USB2,
 
 	.start		= usbredir_hub_start,
@@ -308,6 +303,7 @@ static struct hc_driver usbredir_hc_driver = {
 static int usbredir_create_hcd(struct usbredir_hub *hub)
 {
 	int ret;
+
 	hub->hcd = usb_create_hcd(&usbredir_hc_driver, &hub->pdev.dev,
 			     dev_name(&hub->pdev.dev));
 	if (!hub->hcd) {
@@ -315,13 +311,13 @@ static int usbredir_create_hcd(struct usbredir_hub *hub)
 		return -ENOMEM;
 	}
 
-	// TODO - review if we want to has_tt, and anything like it...
+	/* TODO - review if we want to has_tt, and anything like it... */
 	hub->hcd->has_tt = 1;
 
-	// TODO - no one else stores a pointer
-	//        may want to rethink the structure.
-	//        Question:  do we really need to create the pdev first?
-	* ((struct usbredir_hub **) hub->hcd->hcd_priv) = hub;
+	/* TODO - no one else stores a pointer 
+	*        may want to rethink the structure.
+	*        Question:  do we really need to create the pdev first? */
+	*((struct usbredir_hub **) hub->hcd->hcd_priv) = hub;
 
 	ret = usb_add_hcd(hub->hcd, 0, 0);
 	if (ret != 0) {
@@ -346,6 +342,7 @@ struct usbredir_hub *usbredir_hub_create(void)
 {
 	struct usbredir_hub *hub;
 	int id = atomic_inc_return(&hub_count);
+
 	if (id > max_hubs)
 		goto dec_exit;
 
@@ -389,11 +386,13 @@ struct usbredir_device *usbredir_hub_find_device(const char *devid)
 	struct usbredir_device *ret = NULL;
 	struct usbredir_hub *hub;
 	int i;
+
 	spin_lock(&hubs_lock);
 	list_for_each_entry(hub, &hubs, list) {
 		spin_lock(&hub->lock);
 		for (i = 0; i < hub->device_count; i++) {
 			struct usbredir_device *udev = hub->devices + i;
+
 			spin_lock(&udev->lock);
 			if (atomic_read(&udev->active) &&
 			    udev->devid &&
@@ -425,7 +424,7 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 		for (i = 0; i < hub->device_count; i++) {
 			udev = hub->devices + i;
 			spin_lock(&udev->lock);
-			if (! atomic_read(&udev->active)) {
+			if (!atomic_read(&udev->active)) {
 				found++;
 				break;
 			}
@@ -437,9 +436,9 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 	}
 	spin_unlock(&hubs_lock);
 
-	if (! found) {
+	if (!found) {
 		hub = usbredir_hub_create();
-		if (! hub)
+		if (!hub)
 			return NULL;
 
 		return usbredir_hub_allocate_device(devid, socket);

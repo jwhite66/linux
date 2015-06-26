@@ -24,7 +24,7 @@
 
 
 struct usbredir_device {
-	// TODO - a thoughtful look into the locks is overdue
+	/* TODO - a thoughtful look into the locks is overdue */
 	spinlock_t lock;
 
 	atomic_t active;
@@ -35,7 +35,7 @@ struct usbredir_device {
 	u32 port_status;
 
 	struct socket *socket;
-        struct usbredirparser *parser;
+	struct usbredirparser *parser;
 
 	struct task_struct *rx;
 	struct task_struct *tx;
@@ -55,7 +55,7 @@ struct usbredir_device {
 	__u32 rhport;
 
 	/* lock for the below link lists */
-	// TODO - Do away with in favor of a single lock?
+	/* TODO - Do away with in favor of a single lock? */
 	spinlock_t lists_lock;
 
 	/* list of types usbredir_urb */
@@ -149,7 +149,7 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue);
 
 /* redir.c */
-struct usbredirparser * redir_parser_init(void *priv);
+struct usbredirparser *redir_parser_init(void *priv);
 
 /* rx.c */
 struct urb *rx_pop_urb(struct usbredir_device *udev, int seqnum);
@@ -167,7 +167,7 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status);
 /* Fast lookup functions */
 static inline struct usbredir_hub *usbredir_hub_from_hcd(struct usb_hcd *hcd)
 {
-	return * (struct usbredir_hub **) hcd->hcd_priv;
+	return *(struct usbredir_hub **) hcd->hcd_priv;
 }
 
 #endif /* __USBREDIR_H */

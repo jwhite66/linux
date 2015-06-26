@@ -12,10 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307,
- * USA.
  */
 
 #include <linux/kthread.h>
@@ -50,8 +46,9 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 			      struct socket *socket)
 {
 	char pname[32];
+
 	udev->parser = redir_parser_init(udev);
-	if (! udev->parser) {
+	if (!udev->parser) {
 		pr_err("Unable to allocate USBREDIR parser.\n");
 		return;
 	}
@@ -72,7 +69,7 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 void usbredir_device_deallocate(struct usbredir_device *udev,
 				bool stoprx, bool stoptx)
 {
-	pr_debug("%s %p/%d (active %d)\n", __FUNCTION__, udev,
+	pr_debug("%s %p/%d (active %d)\n", __func__, udev,
 		 udev->rhport, atomic_read(&udev->active));
 	if (atomic_dec_if_positive(&udev->active) < 0)
 		return;
@@ -107,24 +104,22 @@ void usbredir_device_deallocate(struct usbredir_device *udev,
 	usb_put_dev(udev->usb_dev);
 	udev->usb_dev = NULL;
 
-	if (udev->devid) {
-		kfree(udev->devid);
-		udev->devid = NULL;
-	}
+	kfree(udev->devid);
+	udev->devid = NULL;
 
 	if (udev->parser) {
 		usbredirparser_destroy(udev->parser);
 		udev->parser = NULL;
 	}
 
-	// TODO urblist_xx, unlink_xx
+	/* TODO urblist_xx, unlink_xx */
 	spin_unlock(&udev->lock);
 
 }
 
 static u32 speed_to_portflag(enum usb_device_speed speed)
 {
-	switch(speed) {
+	switch (speed) {
 	case usb_redir_speed_low:   return USB_PORT_STAT_LOW_SPEED;
 	case usb_redir_speed_high:  return USB_PORT_STAT_HIGH_SPEED;
 
@@ -134,7 +129,7 @@ static u32 speed_to_portflag(enum usb_device_speed speed)
 	}
 }
 
-// TODO - no thought at all to Super speed stuff...
+/* TODO - no thought at all to Super speed stuff... */
 void usbredir_device_connect(struct usbredir_device *udev)
 {
 	spin_lock(&udev->lock);
@@ -164,6 +159,7 @@ static struct usbredir_device *validate_and_lock(struct usbredir_hub *hub,
 						 int rhport)
 {
 	struct usbredir_device *udev;
+
 	spin_lock(&hub->lock);
 	if (rhport < 0 || rhport >= hub->device_count) {
 		pr_err("invalid port number %d\n", rhport);
@@ -180,7 +176,8 @@ int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue)
 {
 	struct usbredir_device *udev = validate_and_lock(hub, rhport);
-	if (! udev)
+
+	if (!udev)
 		return -ENODEV;
 
 	switch (wValue) {
@@ -201,7 +198,7 @@ int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 		break;
 	case USB_PORT_FEAT_C_RESET:
 		pr_debug(" ClearPortFeature: USB_PORT_FEAT_C_RESET\n");
-		// TODO - USB 3.0 stuff as well?
+		/* TODO - USB 3.0 stuff as well? */
 		switch (udev->connect_header.speed) {
 		case usb_redir_speed_high:
 			udev->port_status |= USB_PORT_STAT_HIGH_SPEED;
@@ -227,7 +224,8 @@ int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 {
 	struct usbredir_device *udev = validate_and_lock(hub, rhport);
-	if (! udev)
+
+	if (!udev)
 		return -ENODEV;
 
 	pr_debug("%s port_status 0x%x\n", __func__, udev->port_status);
@@ -273,7 +271,8 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue)
 {
 	struct usbredir_device *udev = validate_and_lock(hub, rhport);
-	if (! udev)
+
+	if (!udev)
 		return -ENODEV;
 
 	switch (wValue) {

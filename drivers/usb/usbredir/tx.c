@@ -12,10 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307,
- * USA.
  */
 
 #include <linux/kthread.h>
@@ -46,23 +42,23 @@ static int send_cmd(struct usbredir_device *udev)
 
 	size_t total_size = 0;
 
-	// TODO - lock?
+	/* TODO - lock? */
 
 	while ((uurb = get_next_cmd(udev)) != NULL) {
 		struct urb *urb = uurb->urb;
 		__u8 type = usb_pipetype(urb->pipe);
 
-		//pr_debug("JPW urb: [pipe %x|type %d|stream_id %u|status %d|",
-		//	urb->pipe, type, urb->stream_id, urb->status);
-		//pr_debug("tflags 0x%x|mapped sgs %d|num_sgs %d|tbuflen %u|",
-		//	urb->transfer_flags, urb->num_mapped_sgs, urb->num_sgs,
-		//	urb->transfer_buffer_length);
-		//pr_debug("complete %p|", urb->complete);
-		//pr_debug("pipedevice %x|", usb_pipedevice(urb->pipe));
-		//pr_debug("act len %u|st frame %d|num pack %d|int %d|err %d]\n",
-		//	urb->actual_length, urb->start_frame,
-		//	urb->number_of_packets, urb->interval,
-		//	urb->error_count);
+		/*pr_debug("JPW urb: [pipe %x|type %d|stream_id %u|status %d|",
+			urb->pipe, type, urb->stream_id, urb->status);
+		pr_debug("tflags 0x%x|mapped sgs %d|num_sgs %d|tbuflen %u|",
+			urb->transfer_flags, urb->num_mapped_sgs, urb->num_sgs,
+			urb->transfer_buffer_length);
+		pr_debug("complete %p|", urb->complete);
+		pr_debug("pipedevice %x|", usb_pipedevice(urb->pipe));
+		pr_debug("act len %u|st frame %d|num pack %d|int %d|err %d]\n",
+			urb->actual_length, urb->start_frame,
+			urb->number_of_packets, urb->interval,
+			urb->error_count);*/
 
 		if (type == PIPE_CONTROL && urb->setup_packet) {
 			struct usb_ctrlrequest *ctrlreq =
@@ -78,8 +74,8 @@ static int send_cmd(struct usbredir_device *udev)
 			ctrl.index = le16_to_cpu(ctrlreq->wIndex);
 			ctrl.length = le16_to_cpu(ctrlreq->wLength);
 
-			//pr_debug("control request to endpoint 0x%x:\n",
-			//	 ctrl.endpoint);
+			/*pr_debug("control request to endpoint 0x%x:\n",
+				 ctrl.endpoint); */
 
 			usbredirparser_send_control_packet(udev->parser,
 				uurb->seqnum, &ctrl,
@@ -92,6 +88,7 @@ static int send_cmd(struct usbredir_device *udev)
 
 		if (type == PIPE_BULK) {
 			struct usb_redir_bulk_packet_header bulk;
+
 			bulk.endpoint = usb_pipeendpoint(urb->pipe) |
 					usb_pipein(urb->pipe);
 			bulk.status = 0;
@@ -99,8 +96,8 @@ static int send_cmd(struct usbredir_device *udev)
 			bulk.stream_id = urb->stream_id;
 			bulk.length_high = 0;
 
-			//pr_debug("bulk request to endpoint 0x%x:\n",
-			//	 bulk.endpoint);
+			/*pr_debug("bulk request to endpoint 0x%x:\n",
+				 bulk.endpoint); */
 
 			usbredirparser_send_bulk_packet(udev->parser,
 				uurb->seqnum, &bulk,
@@ -139,13 +136,13 @@ static int send_unlink(struct usbredir_device *udev)
 	size_t total_size = 0;
 
 	while ((unlink = get_next_unlink(udev)) != NULL) {
-		pr_debug("partially unimplemented: unlink request of "
-			 "seqnum %d, unlink seqnum %d\n",
+		pr_debug("partially unimplemented: unlink request of ");
+		pr_debug("seqnum %d, unlink seqnum %d\n",
 			unlink->seqnum, unlink->unlink_seqnum);
 
-		// TODO - if the other side never responds, which it may
-		//        not do if the seqnum doesn't match, then we
-		//        never clear this entry.  That's probably not ideal
+		/* TODO - if the other side never responds, which it may
+		        not do if the seqnum doesn't match, then we
+		        never clear this entry.  That's probably not ideal */
 		usbredirparser_send_cancel_data_packet(udev->parser,
 						       unlink->unlink_seqnum);
 	}
@@ -159,7 +156,6 @@ void tx_urb(struct usbredir_device *udev, struct urb *urb)
 
 	uurb = kzalloc(sizeof(struct usbredir_urb), GFP_ATOMIC);
 	if (!uurb) {
-		pr_err("Error allocating a usbredir_urb structure\n");
 		usbredir_device_disconnect(udev);
 		usbredir_device_deallocate(udev, true, true);
 		return;
@@ -188,7 +184,7 @@ int tx_loop(void *data)
 	while (!kthread_should_stop() && atomic_read(&udev->active)) {
 		if (usbredirparser_has_data_to_write(udev->parser)) {
 			if (usbredirparser_do_write(udev->parser)) {
-				// TODO - need to think about this
+				/* TODO - need to think about this */
 				break;
 			}
 		}
