@@ -137,7 +137,8 @@ void usbredir_device_init(struct usbredir_device *udev, int port,
 void usbredir_device_allocate(struct usbredir_device *udev,
 			      const char *devid,
 			      struct socket *socket);
-void usbredir_device_deallocate(struct usbredir_device *udev);
+void usbredir_device_deallocate(struct usbredir_device *udev,
+				bool stop, bool stoptx);
 void usbredir_device_connect(struct usbredir_device *udev);
 int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue);

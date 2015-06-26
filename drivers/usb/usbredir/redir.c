@@ -60,13 +60,12 @@ static int redir_read(void *priv, uint8_t *data, int count)
 	struct socket *socket;
 	int rc;
 
-	// TODO - see if event thread can go, and if this is non blocking.if (kthread_should_stop() || usbredir_event_happened(dev))
-	if (kthread_should_stop())
+	if (kthread_should_stop() || ! atomic_read(&udev->active))
 		return -ESRCH;
 
 	spin_lock(&udev->lock);
 	socket = udev->socket;
-	// TODO - exit if thread stopped?
+	// TODO - reference/dereference the socket?
 	spin_unlock(&udev->lock);
 
 	socket->sk->sk_allocation = GFP_NOIO;

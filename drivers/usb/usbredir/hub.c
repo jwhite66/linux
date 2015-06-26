@@ -68,7 +68,7 @@ static void usbredir_hub_stop(struct usb_hcd *hcd)
 	spin_lock(&hub->lock);
 
 	for (i = 0; i < hub->device_count && hub->devices; i++)
-		usbredir_device_deallocate(hub->devices + i);
+		usbredir_device_deallocate(hub->devices + i, true, true);
 
 	if (hub->devices)
 		kfree(hub->devices);

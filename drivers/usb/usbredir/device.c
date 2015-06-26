@@ -68,13 +68,25 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 }
 
 
-void usbredir_device_deallocate(struct usbredir_device *udev)
+void usbredir_device_deallocate(struct usbredir_device *udev,
+				bool stoprx, bool stoptx)
 {
 	pr_debug("destroy_device %p/%d\n", udev, udev->rhport);
-	if (! atomic_read(&udev->active))
+	if (atomic_dec_if_positive(&udev->active) < 0)
 		return;
 
+	if (stoprx && udev->rx)
+		kthread_stop(udev->rx);
+
+	if (stoptx && udev->tx)
+		kthread_stop(udev->tx);
+
+	// TODO? wake_up_interruptible(&udev->waitq_tx);
+
 	spin_lock(&udev->lock);
+
+	udev->rx = NULL;
+	udev->tx = NULL;
 
 	usb_put_dev(udev->usb_dev);
 	udev->usb_dev = NULL;
@@ -96,17 +108,8 @@ void usbredir_device_deallocate(struct usbredir_device *udev)
 	}
 
 	// TODO urblist_xx, unlink_xx
-	atomic_set(&udev->active, 0);
-
 	spin_unlock(&udev->lock);
 
-	/* Note:  calling kthread_sop on the tx and rx threads
-	 *        can lead to a race condition, as kthread_stop
-	 *        waits for a thread to exit before returning.
-	 *        We rely on each thread to see that their device
-	 *        is no longer active and to self destruct. */
-
-	wake_up_interruptible(&udev->waitq_tx);
 }
 
 static u32 speed_to_portflag(enum usb_device_speed speed)

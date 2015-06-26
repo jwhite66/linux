@@ -83,7 +83,7 @@ int rx_loop(void *data)
 		}
 	}
 
-	usbredir_device_deallocate(udev);
+	usbredir_device_deallocate(udev, false, true);
 
 	return 0;
 }

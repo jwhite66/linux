@@ -205,7 +205,7 @@ int tx_loop(void *data)
 			 usbredirparser_has_data_to_write(udev->parser)));
 	}
 
-	usbredir_device_deallocate(udev);
+	usbredir_device_deallocate(udev, true, false);
 
 	return 0;
 }
