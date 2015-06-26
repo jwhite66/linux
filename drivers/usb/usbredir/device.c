@@ -71,22 +71,37 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 void usbredir_device_deallocate(struct usbredir_device *udev,
 				bool stoprx, bool stoptx)
 {
-	pr_debug("destroy_device %p/%d\n", udev, udev->rhport);
+	pr_debug("destroy_device %p/%d (active %d)\n", udev,
+		 udev->rhport, atomic_read(&udev->active));
 	if (atomic_dec_if_positive(&udev->active) < 0)
 		return;
 
+	/* Release the rx thread */
+	spin_lock(&udev->lock);
+	if (udev->socket)
+		kernel_sock_shutdown(udev->socket, SHUT_RDWR);
+	spin_unlock(&udev->lock);
+
+	/* Release the tx thread */
+	wake_up_interruptible(&udev->waitq_tx);
+
+	/* The key is that kthread_stop waits until that thread has exited,
+	 *   so we don't clean up resources still in use */
 	if (stoprx && udev->rx)
 		kthread_stop(udev->rx);
 
 	if (stoptx && udev->tx)
 		kthread_stop(udev->tx);
 
-	// TODO? wake_up_interruptible(&udev->waitq_tx);
-
 	spin_lock(&udev->lock);
 
 	udev->rx = NULL;
 	udev->tx = NULL;
+
+	if (udev->socket) {
+		sockfd_put(udev->socket);
+		udev->socket = NULL;
+	}
 
 	usb_put_dev(udev->usb_dev);
 	udev->usb_dev = NULL;
@@ -99,12 +114,6 @@ void usbredir_device_deallocate(struct usbredir_device *udev,
 	if (udev->parser) {
 		usbredirparser_destroy(udev->parser);
 		udev->parser = NULL;
-	}
-
-	if (udev->socket) {
-		// TODO - close?
-		sockfd_put(udev->socket);
-		udev->socket = NULL;
 	}
 
 	// TODO urblist_xx, unlink_xx
@@ -138,36 +147,39 @@ void usbredir_device_connect(struct usbredir_device *udev)
 }
 
 
-static int valid_port(struct usbredir_hub *hub, int rhport)
+static struct usbredir_device *validate_and_lock(struct usbredir_hub *hub,
+						 int rhport)
 {
-	int ret;
+	struct usbredir_device *udev;
 	spin_lock(&hub->lock);
-	ret = rhport >= 0 && rhport < hub->device_count;
-	spin_unlock(&hub->lock);
-	if (! ret)
+	if (rhport < 0 || rhport >= hub->device_count) {
 		pr_err("invalid port number %d\n", rhport);
-	return ret;
+		spin_unlock(&hub->lock);
+		return NULL;
+	}
+	udev = hub->devices + rhport;
+	if (!atomic_read(&udev->active)) {
+		spin_unlock(&hub->lock);
+		return NULL;
+	}
+
+	spin_lock(&udev->lock);
+	return udev;
 }
 
 int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue)
 {
-	struct usbredir_device *udev;
-
-	if (! valid_port(hub, rhport))
+	struct usbredir_device *udev = validate_and_lock(hub, rhport);
+	if (! udev)
 		return -EPIPE;
-
-	spin_lock(&hub->lock);
-
-	udev = hub->devices + rhport;
-	spin_lock(&udev->lock);
 
 	switch (wValue) {
 	case USB_PORT_FEAT_SUSPEND:
 		pr_debug(" ClearPortFeature: USB_PORT_FEAT_SUSPEND\n");
 		if (udev->port_status & USB_PORT_STAT_SUSPEND) {
 			/* 20msec signaling */
-			/* TODO - figure out what this is about */
+			/* TODO - see note on suspend/resume below */
 			hub->resuming = 1;
 			hub->re_timeout =
 				jiffies + msecs_to_jiffies(20);
@@ -205,19 +217,13 @@ int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 
 int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 {
-	struct usbredir_device *udev;
-	if (! valid_port(hub, rhport))
+	struct usbredir_device *udev = validate_and_lock(hub, rhport);
+	if (! udev)
 		return -EPIPE;
 
-	spin_lock(&hub->lock);
-
-	udev = hub->devices + rhport;
-	spin_lock(&udev->lock);
-
-
-	/* TODO - read these comments and delete them or 
-	 *   make sure JPW understands them */
-	/* we do not care about resume. */
+	/* TODO - the logic on resume/reset etc is really
+	 *   just blindly copied from USBIP.  Make sure
+	 *   this eventually gets thoughtful review and testing. */
 
 	/* whoever resets or resumes must GetPortStatus to
 	 * complete it!!
@@ -229,17 +235,14 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 		hub->re_timeout = 0;
 	}
 
-	if ((udev->port_status & (1 << USB_PORT_FEAT_RESET)) != 0 &&
+	if ((udev->port_status & (1 << USB_PORT_FEAT_RESET)) &&
 	     time_after(jiffies, hub->re_timeout)) {
 		udev->port_status |= (1 << USB_PORT_FEAT_C_RESET);
 		udev->port_status &= ~(1 << USB_PORT_FEAT_RESET);
 		hub->re_timeout = 0;
 
-		if (atomic_read(&udev->active) && ! udev->usb_dev) {
-			pr_debug(
-				" enable rhport %d\n", rhport);
-			udev->port_status |= USB_PORT_STAT_ENABLE;
-		}
+		pr_debug(" enable rhport %d\n", rhport);
+		udev->port_status |= USB_PORT_STAT_ENABLE;
 	}
 
 	((__le16 *) buf)[0] = cpu_to_le16(udev->port_status);
@@ -257,25 +260,21 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue)
 {
-	struct usbredir_device *udev;
-	if (! valid_port(hub, rhport))
+	struct usbredir_device *udev = validate_and_lock(hub, rhport);
+	if (! udev)
 		return -EPIPE;
 
-	spin_lock(&hub->lock);
-
-	udev = hub->devices + rhport;
-	spin_lock(&udev->lock);
 	switch (wValue) {
 	case USB_PORT_FEAT_SUSPEND:
-		pr_debug(
-			" SetPortFeature: USB_PORT_FEAT_SUSPEND\n");
+		pr_debug(" SetPortFeature: USB_PORT_FEAT_SUSPEND\n");
 		break;
 	case USB_PORT_FEAT_RESET:
-		pr_debug(
-			" SetPortFeature: USB_PORT_FEAT_RESET\n");
+		pr_debug(" SetPortFeature: USB_PORT_FEAT_RESET\n");
 		udev->port_status &= ~USB_PORT_STAT_ENABLE;
 
 		/* 50msec reset signaling */
+		/* TODO - why?  Seems like matching core/hub.c
+		 *	SHORT_RESET_TIME would be better */
 		hub->re_timeout = jiffies + msecs_to_jiffies(50);
 
 		/* FALLTHROUGH */
@@ -289,4 +288,3 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 	spin_unlock(&hub->lock);
 	return 0;
 }
-

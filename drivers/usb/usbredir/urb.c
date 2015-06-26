@@ -24,6 +24,11 @@
 
 #include "usbredir.h"
 
+/* TODO - this logic was mostly copied from USBIP.
+ *        While some of it has been dissected, it
+ *        really needs a much more thoughtful review
+ *        and analysis */
+
 int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 			    gfp_t mem_flags)
 {

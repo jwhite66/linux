@@ -251,8 +251,9 @@ static int bus_resume(struct usb_hcd *hcd)
 
 static void usbredir_release_hub_dev(struct device *dev)
 {
-	/* TODO - do we need to implement anything here? */
-	pr_info("usbredir_release_hub_dev %p\n", dev);
+	/* TODO - what do we need to implement here? */
+	/*        Need to figure out how to trigger this... */
+	pr_err("usbredir_release_hub_dev %p: not implemented\n", dev);
 }
 
 static int usbredir_register_hub(struct usbredir_hub *hub)
@@ -493,12 +494,13 @@ int usbredir_hub_init(void)
 
 void usbredir_hub_exit(void)
 {
-	struct usbredir_hub *hub;
+	struct usbredir_hub *hub, *tmp;
 
 	spin_lock(&hubs_lock);
-	list_for_each_entry(hub, &hubs, list) {
+	list_for_each_entry_safe(hub, tmp, &hubs, list) {
 		usbredir_hub_destroy(hub);
-		// TODO list remove, kfree
+		list_del(&hub->list);
+		kfree(hub);
 	}
 	spin_unlock(&hubs_lock);
 }

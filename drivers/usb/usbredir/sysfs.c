@@ -31,49 +31,10 @@ static ssize_t status_show(struct device_driver *driver, char *out)
 }
 static DRIVER_ATTR_RO(status);
 
-static ssize_t store_detach(struct device_driver *driver,
-			    const char *buf, size_t count)
-{
-#if defined(HACK_TEMP_HACK)
-	char devid[256];
-	struct usbredir_device *vdev;
-
-	memset(devid, 0, sizeof(devid));
-	if (sscanf(buf, "%255s", devid) != 1)
-		return -EINVAL;
-
-	vdev = find_devid(the_controller, devid);
-	if (! vdev) {
-		pr_err("%s: not found\n", devid);
-		return -EINVAL;
-	}
-
-	spin_lock(&the_controller->lock);
-	spin_lock(&vdev->lock);
-	if (vdev->status == VDEV_ST_NULL) {
-		pr_err("%s: not connected %d\n", devid, vdev->status);
-
-		spin_unlock(&vdev->lock);
-		spin_unlock(&the_controller->lock);
-		return -EINVAL;
-	}
-
-	spin_unlock(&vdev->lock);
-	spin_unlock(&the_controller->lock);
-
-	usbredir_event_add(vdev, VDEV_EVENT_DOWN);
-
-	return count;
-#endif
-	return count;
-}
-static DRIVER_ATTR(detach, S_IWUSR, NULL, store_detach);
-
-
 /*
- * To start a new USBREDIR attachment, a userland program needs to setup a
- * connection and then write its socket descriptor with remote device
- * information into this sysfs file.
+ * To start a new USBREDIR attachment, a user space program needs to setup a
+ * connection and then write its socket descriptor along with a unique
+ * identifer into the 'attach' sysfs file.
  *
  */
 static ssize_t store_attach(struct device_driver *driver,
@@ -86,7 +47,7 @@ static ssize_t store_attach(struct device_driver *driver,
 
 	/*
 	 * @sockfd: socket descriptor of an established TCP connection
-	 * @devid: unique device identifier in a remote host
+	 * @devid: user supplied unique device identifier
 	 */
 	memset(devid, 0, sizeof(devid));
 	if (sscanf(buf, "%u %255s", &sockfd, devid) != 2)
@@ -114,6 +75,35 @@ static ssize_t store_attach(struct device_driver *driver,
 	return count;
 }
 static DRIVER_ATTR(attach, S_IWUSR, NULL, store_attach);
+
+
+static ssize_t store_detach(struct device_driver *driver,
+			    const char *buf, size_t count)
+{
+	char devid[256];
+	struct usbredir_device *udev;
+
+	/*
+	 * @devid: user supplied unique device identifier
+	 */
+	memset(devid, 0, sizeof(devid));
+	if (sscanf(buf, "%255s", devid) != 1)
+		return -EINVAL;
+
+	pr_debug("detach devid(%s)\n", devid);
+
+	udev = usbredir_hub_find_device(devid);
+	if (! udev) {
+		pr_warning("USBREDIR device %s detach requested, but not found\n", devid);
+		return count;
+	}
+
+	usbredir_device_deallocate(udev, true, true);
+
+	return count;
+}
+static DRIVER_ATTR(detach, S_IWUSR, NULL, store_detach);
+
 
 int usbredir_sysfs_register(struct device_driver *driver)
 {
