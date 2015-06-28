@@ -155,7 +155,7 @@ void usbredir_device_disconnect(struct usbredir_device *udev)
 
 
 
-static struct usbredir_device *validate_and_lock(struct usbredir_hub *hub,
+static struct usbredir_device *usbredir_device_get(struct usbredir_hub *hub,
 						 int rhport)
 {
 	struct usbredir_device *udev;
@@ -166,14 +166,21 @@ static struct usbredir_device *validate_and_lock(struct usbredir_hub *hub,
 	}
 	udev = hub->devices + rhport;
 
+	spin_lock(&hub->lock);
 	spin_lock(&udev->lock);
 	return udev;
+}
+
+static void usbredir_device_put(struct usbredir_device *udev)
+{
+	spin_unlock(&udev->lock);
+	spin_unlock(&udev->hub->lock);
 }
 
 int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue)
 {
-	struct usbredir_device *udev = validate_and_lock(hub, rhport);
+	struct usbredir_device *udev = usbredir_device_get(hub, rhport);
 
 	if (!udev)
 		return -ENODEV;
@@ -213,14 +220,14 @@ int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 		break;
 	}
 
-	spin_unlock(&udev->lock);
+	usbredir_device_put(udev);
 
 	return 0;
 }
 
 int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 {
-	struct usbredir_device *udev = validate_and_lock(hub, rhport);
+	struct usbredir_device *udev = usbredir_device_get(hub, rhport);
 
 	if (!udev)
 		return -ENODEV;
@@ -259,14 +266,15 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 	pr_debug(" GetPortStatus bye %x %x\n", ((u16 *)buf)[0],
 			  ((u16 *)buf)[1]);
 
-	spin_unlock(&udev->lock);
+	usbredir_device_put(udev);
+
 	return 0;
 }
 
 int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 			       int rhport, u16 wValue)
 {
-	struct usbredir_device *udev = validate_and_lock(hub, rhport);
+	struct usbredir_device *udev = usbredir_device_get(hub, rhport);
 
 	if (!udev)
 		return -ENODEV;
@@ -291,6 +299,7 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 		break;
 	}
 
-	spin_unlock(&udev->lock);
+	usbredir_device_put(udev);
+
 	return 0;
 }

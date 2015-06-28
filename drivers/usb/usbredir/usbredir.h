@@ -72,18 +72,19 @@ struct usbredir_device {
 
 /* Structure to hold a USB hub */
 struct usbredir_hub {
+	spinlock_t lock;
 	struct list_head	list;
 	int			id;
 	struct platform_device	pdev;
 	struct usb_hcd		*hcd;
 
+	int			device_count;
+	struct usbredir_device *devices;
+
 	atomic_t aseqnum;
 
 	unsigned resuming:1;
 	unsigned long re_timeout;
-
-	int			device_count;
-	struct usbredir_device *devices;
 };
 
 /* Structure to hold a urb as we process it */
@@ -125,7 +126,6 @@ struct usbredir_hub *usbredir_hub_create(void);
 void usbredir_hub_destroy(struct usbredir_hub *hub);
 struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 						     struct socket *socket);
-int usbredir_hub_seqnum(struct usbredir_hub *hub);
 struct usbredir_device *usbredir_hub_find_device(const char *devid);
 int usbredir_hub_show_global_status(char *out);
 
@@ -167,6 +167,17 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status);
 static inline struct usbredir_hub *usbredir_hub_from_hcd(struct usb_hcd *hcd)
 {
 	return *(struct usbredir_hub **) hcd->hcd_priv;
+}
+
+static inline int usbredir_hub_seqnum(struct usbredir_hub *hub)
+{
+	int ret = atomic_inc_return(&hub->aseqnum);
+	/* Atomics are only guaranteed to 24 bits */
+	if (ret < 0 || ret > (1 >> 23)) {
+		ret = 1;
+		atomic_set(&hub->aseqnum, 1);
+	}
+	return ret;
 }
 
 #endif /* __USBREDIR_H */

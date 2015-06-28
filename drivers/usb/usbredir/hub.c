@@ -31,20 +31,24 @@ static int usbredir_hcd_start(struct usb_hcd *hcd)
 	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
 	int i;
 
+	spin_lock(&hub->lock);
 	pr_debug("%s %p\n", __func__, hub);
 
 	hub->device_count = devices_per_hub;
 	hub->devices = kcalloc(hub->device_count, sizeof(*hub->devices),
 			       GFP_ATOMIC);
-	if (!hub->devices)
+	if (!hub->devices) {
+		spin_unlock(&hub->lock);
 		return -ENOMEM;
+	}
 
 	for (i = 0; i < hub->device_count; i++)
 		usbredir_device_init(hub->devices + i, i, hub);
 
 	hcd->power_budget = 0; /* no limit */
 	hcd->uses_new_polling = 1;
-	atomic_set(&hub->aseqnum, 1);
+	atomic_set(&hub->aseqnum, 0);
+	spin_unlock(&hub->lock);
 
 	return 0;
 }
@@ -53,8 +57,7 @@ static void usbredir_hub_stop(struct usbredir_hub *hub)
 {
 	int i;
 
-	if (atomic_read(&hub->aseqnum) == 0)
-		return;
+	spin_lock(&hub->lock);
 
 	pr_debug("usbredir_hub_stop %p\n", hub);
 
@@ -66,6 +69,8 @@ static void usbredir_hub_stop(struct usbredir_hub *hub)
 	kfree(hub->devices);
 	hub->devices = NULL;
 	hub->device_count = 0;
+
+	spin_unlock(&hub->lock);
 }
 
 static void usbredir_hcd_stop(struct usb_hcd *hcd)
@@ -99,14 +104,14 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 
 	pr_debug("usbredir_hub_status for %p\n", hub);
 
-	if (atomic_read(&hub->aseqnum) == 0)
-		return 0;
+	spin_lock(&hub->lock);
 
 	ret = DIV_ROUND_UP(hub->device_count + 1, 8);
 	memset(buf, 0, ret);
 
 	if (!HCD_HW_ACCESSIBLE(hcd)) {
 		pr_debug("hw accessible flag not on?\n");
+		spin_unlock(&hub->lock);
 		return 0;
 	}
 
@@ -130,6 +135,8 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 		}
 		spin_unlock(&udev->lock);
 	}
+
+	spin_unlock(&hub->lock);
 
 	if ((hcd->state == HC_STATE_SUSPENDED) && (changed == 1))
 		usb_hcd_resume_root_hub(hcd);
@@ -162,9 +169,6 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		return -ETIMEDOUT;
 
 	hub = usbredir_hub_from_hcd(hcd);
-
-	if (atomic_read(&hub->aseqnum) == 0)
-		return 0;
 
 	pr_debug("usbredir_hub_control ");
 	pr_debug("[hcd %p|wValue %x|wIndex%u|wLength %u]",
@@ -369,17 +373,6 @@ void usbredir_hub_destroy(struct usbredir_hub *hub)
 	usbredir_unregister_hub(hub);
 }
 
-int usbredir_hub_seqnum(struct usbredir_hub *hub)
-{
-	int ret = atomic_read(&hub->aseqnum);
-	/* Atomics are only guaranteed to 24 bits */
-	if (ret < 0 || ret > (1 >> 23))
-		atomic_set(&hub->aseqnum, 1);
-	else
-		atomic_inc(&hub->aseqnum);
-	return ret;
-}
-
 struct usbredir_device *usbredir_hub_find_device(const char *devid)
 {
 	struct usbredir_device *ret = NULL;
@@ -388,9 +381,7 @@ struct usbredir_device *usbredir_hub_find_device(const char *devid)
 
 	spin_lock(&hubs_lock);
 	list_for_each_entry(hub, &hubs, list) {
-		if (atomic_read(&hub->aseqnum) == 0)
-			continue;
-
+		spin_lock(&hub->lock);
 		for (i = 0; i < hub->device_count; i++) {
 			struct usbredir_device *udev = hub->devices + i;
 
@@ -403,7 +394,7 @@ struct usbredir_device *usbredir_hub_find_device(const char *devid)
 			if (ret)
 				break;
 		}
-
+		spin_unlock(&hub->lock);
 		if (ret)
 			break;
 	}
@@ -421,9 +412,7 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 
 	spin_lock(&hubs_lock);
 	list_for_each_entry(hub, &hubs, list) {
-		if (atomic_read(&hub->aseqnum) == 0)
-			continue;
-
+		spin_lock(&hub->lock);
 		for (i = 0; i < hub->device_count; i++) {
 			udev = hub->devices + i;
 			spin_lock(&udev->lock);
@@ -433,6 +422,7 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 			}
 			spin_unlock(&udev->lock);
 		}
+		spin_unlock(&hub->lock);
 		if (found)
 			break;
 	}
@@ -465,9 +455,7 @@ int usbredir_hub_show_global_status(char *out)
 
 	spin_lock(&hubs_lock);
 	list_for_each_entry(hub, &hubs, list) {
-		if (atomic_read(&hub->aseqnum) == 0)
-			continue;
-
+		spin_lock(&hub->lock);
 		for (i = 0; i < hub->device_count; count++, i++) {
 			udev = hub->devices + i;
 			spin_lock(&udev->lock);
@@ -476,6 +464,7 @@ int usbredir_hub_show_global_status(char *out)
 				used++;
 			spin_unlock(&udev->lock);
 		}
+		spin_unlock(&hub->lock);
 	}
 	spin_unlock(&hubs_lock);
 
