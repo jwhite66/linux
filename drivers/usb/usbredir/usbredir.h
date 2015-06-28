@@ -77,8 +77,6 @@ struct usbredir_hub {
 	struct platform_device	pdev;
 	struct usb_hcd		*hcd;
 
-	spinlock_t lock;
-
 	atomic_t aseqnum;
 
 	unsigned resuming:1;
@@ -127,6 +125,7 @@ struct usbredir_hub *usbredir_hub_create(void);
 void usbredir_hub_destroy(struct usbredir_hub *hub);
 struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 						     struct socket *socket);
+int usbredir_hub_seqnum(struct usbredir_hub *hub);
 struct usbredir_device *usbredir_hub_find_device(const char *devid);
 int usbredir_hub_show_global_status(char *out);
 

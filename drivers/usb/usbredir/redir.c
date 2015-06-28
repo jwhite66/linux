@@ -396,11 +396,7 @@ print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len); */
 		urb->actual_length = control_header->length;
 	}
 
-	spin_lock(&udev->hub->lock);
 	usb_hcd_unlink_urb_from_ep(udev->hub->hcd, urb);
-	spin_unlock(&udev->hub->lock);
-
-	/* TODO - why not inside the lock? */
 	usb_hcd_giveback_urb(udev->hub->hcd, urb, urb->status);
 }
 
@@ -443,11 +439,7 @@ print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len); */
 	/* TODO - what to do with length, stream_id, and length_high */
 	/* TODO - handle more than this flavor... */
 
-	spin_lock(&udev->hub->lock);
 	usb_hcd_unlink_urb_from_ep(udev->hub->hcd, urb);
-	spin_unlock(&udev->hub->lock);
-
-	/* TODO - why not inside the lock? */
 	usb_hcd_giveback_urb(udev->hub->hcd, urb, urb->status);
 }
 

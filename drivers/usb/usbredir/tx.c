@@ -163,7 +163,7 @@ void tx_urb(struct usbredir_device *udev, struct urb *urb)
 
 	spin_lock(&udev->lists_lock);
 
-	uurb->seqnum = atomic_inc_return(&udev->hub->aseqnum);
+	uurb->seqnum = usbredir_hub_seqnum(udev->hub);
 
 	uurb->udev = udev;
 	uurb->urb = urb;

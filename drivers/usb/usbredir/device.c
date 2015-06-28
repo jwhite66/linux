@@ -160,10 +160,8 @@ static struct usbredir_device *validate_and_lock(struct usbredir_hub *hub,
 {
 	struct usbredir_device *udev;
 
-	spin_lock(&hub->lock);
 	if (rhport < 0 || rhport >= hub->device_count) {
 		pr_err("invalid port number %d\n", rhport);
-		spin_unlock(&hub->lock);
 		return NULL;
 	}
 	udev = hub->devices + rhport;
@@ -216,7 +214,6 @@ int usbredir_device_clear_port_feature(struct usbredir_hub *hub,
 	}
 
 	spin_unlock(&udev->lock);
-	spin_unlock(&hub->lock);
 
 	return 0;
 }
@@ -263,7 +260,6 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 			  ((u16 *)buf)[1]);
 
 	spin_unlock(&udev->lock);
-	spin_unlock(&hub->lock);
 	return 0;
 }
 
@@ -296,6 +292,5 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 	}
 
 	spin_unlock(&udev->lock);
-	spin_unlock(&hub->lock);
 	return 0;
 }

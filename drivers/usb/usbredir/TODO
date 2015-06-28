@@ -9,3 +9,4 @@ TODO:
   *  Not just hacking the usbredirparser, but proper patches
   *  Expose a sysfs attribute and have udev use it
   *  Turn on more capabilities and watch it go
+  *  Check the seqnum against a max, and wrap it deliberately

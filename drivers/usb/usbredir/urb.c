@@ -36,11 +36,8 @@ int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 	pr_debug("urb_enqueue: enter, usb_hcd %p urb %p mem_flags %d\n",
 			  hcd, urb, mem_flags);
 
-	spin_lock(&hub->lock);
-
 	if (urb->status != -EINPROGRESS) {
 		dev_err(dev, "URB already unlinked!, status %d\n", urb->status);
-		spin_unlock(&hub->lock);
 		return urb->status;
 	}
 
@@ -49,7 +46,6 @@ int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 	/* refuse enqueue for dead connection */
 	if (!atomic_read(&udev->active)) {
 		dev_err(dev, "enqueue for inactive port %d\n", udev->rhport);
-		spin_unlock(&hub->lock);
 		return -ENODEV;
 	}
 
@@ -119,14 +115,12 @@ int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 
 out:
 	tx_urb(udev, urb);
-	spin_unlock(&hub->lock);
 
 	return 0;
 
 no_need_xmit:
 	usb_hcd_unlink_urb_from_ep(hcd, urb);
 no_need_unlink:
-	spin_unlock(&hub->lock);
 	usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
 	return ret;
 }
@@ -139,13 +133,10 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
 	pr_debug("enter dequeue urb %p\n", urb);
 
-	spin_lock(&hub->lock);
-
 	uurb = urb->hcpriv;
 	if (!uurb) {
 		/* URB was never linked! or will be soon given back by
 		 * rx_loop. */
-		spin_unlock(&hub->lock);
 		return 0;
 	}
 
@@ -155,7 +146,6 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
 		ret = usb_hcd_check_unlink_urb(hcd, urb, status);
 		if (ret) {
-			spin_unlock(&hub->lock);
 			return ret;
 		}
 	}
@@ -178,10 +168,7 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
 		usb_hcd_unlink_urb_from_ep(hcd, urb);
 
-		/* TODO - why the unlock? */
-		spin_unlock(&hub->lock);
 		usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
-		spin_lock(&hub->lock);
 
 	} else {
 		/* tcp connection is alive */
@@ -193,12 +180,11 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		unlink = kzalloc(sizeof(struct usbredir_unlink), GFP_ATOMIC);
 		if (!unlink) {
 			spin_unlock(&udev->lists_lock);
-			spin_unlock(&hub->lock);
 			/* TODO complain somehow... */
 			return -ENOMEM;
 		}
 
-		unlink->seqnum = atomic_inc_return(&hub->aseqnum);
+		unlink->seqnum = usbredir_hub_seqnum(hub);
 
 		unlink->unlink_seqnum = uurb->seqnum;
 
@@ -209,8 +195,6 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
 		spin_unlock(&udev->lists_lock);
 	}
-
-	spin_unlock(&hub->lock);
 
 	pr_debug("leave dequeue urb %p\n", urb);
 	return 0;

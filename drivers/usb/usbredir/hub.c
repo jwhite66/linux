@@ -26,38 +26,35 @@ static spinlock_t hubs_lock;
 static struct list_head hubs;
 static atomic_t hub_count;
 
-static int usbredir_hub_start(struct usb_hcd *hcd)
+static int usbredir_hcd_start(struct usb_hcd *hcd)
 {
 	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
 	int i;
 
-	pr_debug("usbredir_hub_start %p\n", hub);
-
-	spin_lock(&hub->lock);
+	pr_debug("%s %p\n", __func__, hub);
 
 	hub->device_count = devices_per_hub;
 	hub->devices = kcalloc(hub->device_count, sizeof(*hub->devices),
 			       GFP_ATOMIC);
-	if (!hub->devices) {
-		spin_unlock(&hub->lock);
+	if (!hub->devices)
 		return -ENOMEM;
-	}
 
 	for (i = 0; i < hub->device_count; i++)
 		usbredir_device_init(hub->devices + i, i, hub);
 
 	hcd->power_budget = 0; /* no limit */
 	hcd->uses_new_polling = 1;
-	atomic_set(&hub->aseqnum, 0);
-	spin_unlock(&hub->lock);
+	atomic_set(&hub->aseqnum, 1);
 
 	return 0;
 }
 
-static void usbredir_hub_stop(struct usb_hcd *hcd)
+static void usbredir_hub_stop(struct usbredir_hub *hub)
 {
-	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
 	int i;
+
+	if (atomic_read(&hub->aseqnum) == 0)
+		return;
 
 	pr_debug("usbredir_hub_stop %p\n", hub);
 
@@ -66,13 +63,14 @@ static void usbredir_hub_stop(struct usb_hcd *hcd)
 		usbredir_device_deallocate(hub->devices + i, true, true);
 	}
 
-	spin_lock(&hub->lock);
-
 	kfree(hub->devices);
 	hub->devices = NULL;
 	hub->device_count = 0;
+}
 
-	spin_unlock(&hub->lock);
+static void usbredir_hcd_stop(struct usb_hcd *hcd)
+{
+	usbredir_hub_stop(usbredir_hub_from_hcd(hcd));
 }
 
 static int get_frame_number(struct usb_hcd *hcd)
@@ -101,14 +99,14 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 
 	pr_debug("usbredir_hub_status for %p\n", hub);
 
-	spin_lock(&hub->lock);
+	if (atomic_read(&hub->aseqnum) == 0)
+		return 0;
 
 	ret = DIV_ROUND_UP(hub->device_count + 1, 8);
 	memset(buf, 0, ret);
 
 	if (!HCD_HW_ACCESSIBLE(hcd)) {
 		pr_debug("hw accessible flag not on?\n");
-		spin_unlock(&hub->lock);
 		return 0;
 	}
 
@@ -133,8 +131,6 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 		spin_unlock(&udev->lock);
 	}
 
-	spin_unlock(&hub->lock);
-
 	if ((hcd->state == HC_STATE_SUSPENDED) && (changed == 1))
 		usb_hcd_resume_root_hub(hcd);
 
@@ -150,9 +146,7 @@ static inline void usbredir_hub_descriptor(struct usbredir_hub *hub,
 	desc->bDescLength = 9;
 	desc->wHubCharacteristics = cpu_to_le16(
 		HUB_CHAR_INDV_PORT_LPSM | HUB_CHAR_COMMON_OCPM);
-	spin_lock(&hub->lock);
 	desc->bNbrPorts = hub->device_count;
-	spin_unlock(&hub->lock);
 	desc->u.hs.DeviceRemovable[0] = 0xff;
 	desc->u.hs.DeviceRemovable[1] = 0xff;
 }
@@ -164,25 +158,29 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	int             ret = 0;
 	int		rhport;
 
-	pr_debug("usbredir_hub_control ");
-	pr_debug("[hcd %p|typeReq %x|wValue %x|wIndex%u|wLength %u]\n",
-		 hcd, typeReq, wValue, wIndex, wLength);
-
 	if (!HCD_HW_ACCESSIBLE(hcd))
 		return -ETIMEDOUT;
 
+	hub = usbredir_hub_from_hcd(hcd);
+
+	if (atomic_read(&hub->aseqnum) == 0)
+		return 0;
+
+	pr_debug("usbredir_hub_control ");
+	pr_debug("[hcd %p|wValue %x|wIndex%u|wLength %u]",
+		 hcd, wValue, wIndex, wLength);
+
 	/* wIndex is 1 based */
 	rhport = ((__u8)(wIndex & 0x00ff)) - 1;
-
-	hub = usbredir_hub_from_hcd(hcd);
 
 	switch (typeReq) {
 	case ClearHubFeature:
 		pr_debug(" ClearHubFeature\n");
 		break;
-	case ClearPortFeature:
-		pr_debug(" ClearPortFeature\n");
-		return usbredir_device_clear_port_feature(hub, rhport, wValue);
+	case SetHubFeature:
+		pr_debug(" SetHubFeature\n");
+		ret = -EPIPE;
+		break;
 	case GetHubDescriptor:
 		pr_debug(" GetHubDescriptor\n");
 		usbredir_hub_descriptor(hub, (struct usb_hub_descriptor *) buf);
@@ -191,19 +189,18 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		pr_debug(" GetHubStatus\n");
 		*(__le32 *) buf = cpu_to_le32(0);
 		break;
-	case GetPortStatus:
-		pr_debug(" GetPortStatus\n");
-		return usbredir_device_port_status(hub, rhport, buf);
-	case SetHubFeature:
-		pr_debug(" SetHubFeature\n");
-		ret = -EPIPE;
-		break;
+	case ClearPortFeature:
+		pr_debug(" ClearPortFeature\n");
+		return usbredir_device_clear_port_feature(hub, rhport, wValue);
 	case SetPortFeature:
 		pr_debug(" SetPortFeature\n");
 		return usbredir_device_set_port_feature(hub, rhport, wValue);
-
+	case GetPortStatus:
+		pr_debug(" GetPortStatus\n");
+		return usbredir_device_port_status(hub, rhport, buf);
 	default:
-		pr_err("usbredir_hub_control: no such request %x\n", typeReq);
+		pr_debug(" unknown type %x\n", typeReq);
+		pr_err("usbredir_hub_control: no handler for request %x\n", typeReq);
 
 		/* "protocol stall" on error */
 		ret = -EPIPE;
@@ -215,13 +212,9 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 /* FIXME: suspend/resume */
 static int bus_suspend(struct usb_hcd *hcd)
 {
-	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
-
 	dev_dbg(&hcd->self.root_hub->dev, "%s\n", __func__);
 
-	spin_lock(&hub->lock);
 	hcd->state = HC_STATE_SUSPENDED;
-	spin_unlock(&hub->lock);
 
 	return 0;
 }
@@ -229,16 +222,13 @@ static int bus_suspend(struct usb_hcd *hcd)
 static int bus_resume(struct usb_hcd *hcd)
 {
 	int rc = 0;
-	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
 
 	dev_dbg(&hcd->self.root_hub->dev, "%s\n", __func__);
 
-	spin_lock(&hub->lock);
 	if (!HCD_HW_ACCESSIBLE(hcd))
 		rc = -ESHUTDOWN;
 	else
 		hcd->state = HC_STATE_RUNNING;
-	spin_unlock(&hub->lock);
 	return rc;
 }
 #else
@@ -286,8 +276,8 @@ static struct hc_driver usbredir_hc_driver = {
 	/* TODO = what other flags are available and what of USB3? */
 	.flags		= HCD_USB2,
 
-	.start		= usbredir_hub_start,
-	.stop		= usbredir_hub_stop,
+	.start		= usbredir_hcd_start,
+	.stop		= usbredir_hcd_stop,
 
 	.urb_enqueue	= urb_enqueue,
 	.urb_dequeue	= urb_dequeue,
@@ -363,8 +353,6 @@ struct usbredir_hub *usbredir_hub_create(void)
 		goto dec_exit;
 	}
 
-	spin_lock_init(&hub->lock);
-
 	spin_lock(&hubs_lock);
 	list_add_tail(&hub->list, &hubs);
 	spin_unlock(&hubs_lock);
@@ -376,11 +364,21 @@ dec_exit:
 
 void usbredir_hub_destroy(struct usbredir_hub *hub)
 {
-	usbredir_hub_stop(hub->hcd);
+	usbredir_hub_stop(hub);
 	usbredir_destroy_hcd(hub);
 	usbredir_unregister_hub(hub);
 }
 
+int usbredir_hub_seqnum(struct usbredir_hub *hub)
+{
+	int ret = atomic_read(&hub->aseqnum);
+	/* Atomics are only guaranteed to 24 bits */
+	if (ret < 0 || ret > (1 >> 23))
+		atomic_set(&hub->aseqnum, 1);
+	else
+		atomic_inc(&hub->aseqnum);
+	return ret;
+}
 
 struct usbredir_device *usbredir_hub_find_device(const char *devid)
 {
@@ -390,7 +388,9 @@ struct usbredir_device *usbredir_hub_find_device(const char *devid)
 
 	spin_lock(&hubs_lock);
 	list_for_each_entry(hub, &hubs, list) {
-		spin_lock(&hub->lock);
+		if (atomic_read(&hub->aseqnum) == 0)
+			continue;
+
 		for (i = 0; i < hub->device_count; i++) {
 			struct usbredir_device *udev = hub->devices + i;
 
@@ -403,7 +403,7 @@ struct usbredir_device *usbredir_hub_find_device(const char *devid)
 			if (ret)
 				break;
 		}
-		spin_unlock(&hub->lock);
+
 		if (ret)
 			break;
 	}
@@ -421,7 +421,9 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 
 	spin_lock(&hubs_lock);
 	list_for_each_entry(hub, &hubs, list) {
-		spin_lock(&hub->lock);
+		if (atomic_read(&hub->aseqnum) == 0)
+			continue;
+
 		for (i = 0; i < hub->device_count; i++) {
 			udev = hub->devices + i;
 			spin_lock(&udev->lock);
@@ -433,7 +435,6 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 		}
 		if (found)
 			break;
-		spin_unlock(&hub->lock);
 	}
 	spin_unlock(&hubs_lock);
 
@@ -448,7 +449,6 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 	usbredir_device_allocate(udev, devid, socket);
 
 	spin_unlock(&udev->lock);
-	spin_unlock(&hub->lock);
 
 	return udev;
 }
@@ -465,7 +465,9 @@ int usbredir_hub_show_global_status(char *out)
 
 	spin_lock(&hubs_lock);
 	list_for_each_entry(hub, &hubs, list) {
-		spin_lock(&hub->lock);
+		if (atomic_read(&hub->aseqnum) == 0)
+			continue;
+
 		for (i = 0; i < hub->device_count; count++, i++) {
 			udev = hub->devices + i;
 			spin_lock(&udev->lock);
@@ -474,7 +476,6 @@ int usbredir_hub_show_global_status(char *out)
 				used++;
 			spin_unlock(&udev->lock);
 		}
-		spin_unlock(&hub->lock);
 	}
 	spin_unlock(&hubs_lock);
 
