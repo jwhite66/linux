@@ -121,7 +121,7 @@ int usbredir_tx_loop(void *data)
 {
 	struct usbredir_device *udev = data;
 	struct usbredir_urb *uurb;
-        struct usbredir_unlink *unlink;
+	struct usbredir_unlink *unlink;
 
 	while (!kthread_should_stop() && atomic_read(&udev->active)) {
 		if (usbredirparser_has_data_to_write(udev->parser))
@@ -140,7 +140,7 @@ int usbredir_tx_loop(void *data)
 			  !list_empty(&udev->unlink_tx) ||
 			  kthread_should_stop() ||
 			 usbredirparser_has_data_to_write(udev->parser) ||
-			 ! atomic_read(&udev->active)));
+			 !atomic_read(&udev->active)));
 	}
 
 	pr_debug("%s exit\n", __func__);

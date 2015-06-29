@@ -55,8 +55,8 @@ static bool intercept_urb_request(struct usbredir_device *udev,
 	if (usb_pipedevice(urb->pipe) != 0)
 		return false;
 
-	if (type != PIPE_CONTROL || ! ctrlreq) {
-		dev_err(dev, "invalid request to devnum 0; type %x, req %p \n",
+	if (type != PIPE_CONTROL || !ctrlreq) {
+		dev_err(dev, "invalid request to devnum 0; type %x, req %p\n",
 			type, ctrlreq);
 		*ret = -EINVAL;
 		return true;
