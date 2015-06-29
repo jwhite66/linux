@@ -61,9 +61,9 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 
 	/* TODO - safe to hold udev lock through thread creation? */
 	sprintf(pname, "usbredir/rx:%d", udev->rhport);
-	udev->rx = kthread_run(rx_loop, udev, pname);
+	udev->rx = kthread_run(usbredir_rx_loop, udev, pname);
 	sprintf(pname, "usbredir/tx:%d", udev->rhport);
-	udev->tx = kthread_run(tx_loop, udev, pname);
+	udev->tx = kthread_run(usbredir_tx_loop, udev, pname);
 }
 
 void usbredir_device_cleanup_unlink(struct usbredir_device *udev)
@@ -86,7 +86,7 @@ void usbredir_device_cleanup_unlink(struct usbredir_device *udev)
 void usbredir_device_deallocate(struct usbredir_device *udev,
 				bool stoprx, bool stoptx)
 {
-	pr_debug("%s %p/%d (active %d)\n", __func__, udev,
+	pr_debug("%s %d/%d (active %d)\n", __func__, udev->hub->id,
 		 udev->rhport, atomic_read(&udev->active));
 	if (atomic_dec_if_positive(&udev->active) < 0)
 		return;
@@ -151,7 +151,8 @@ static u32 speed_to_portflag(enum usb_device_speed speed)
 void usbredir_device_connect(struct usbredir_device *udev)
 {
 	spin_lock(&udev->lock);
-	pr_debug("%s %d:%s\n", __func__, udev->rhport, udev->devid);
+	pr_debug("%s %d/%d:%s\n", __func__,
+		 udev->hub->id, udev->rhport, udev->devid);
 	udev->port_status |= USB_PORT_STAT_CONNECTION |
 			    (1 << USB_PORT_FEAT_C_CONNECTION);
 	udev->port_status |= speed_to_portflag(udev->connect_header.speed);
@@ -163,7 +164,8 @@ void usbredir_device_connect(struct usbredir_device *udev)
 void usbredir_device_disconnect(struct usbredir_device *udev)
 {
 	spin_lock(&udev->lock);
-	pr_debug("%s %d:%s\n", __func__, udev->rhport, udev->devid);
+	pr_debug("%s %d/%d:%s\n", __func__,
+		 udev->hub->id, udev->rhport, udev->devid);
 	udev->port_status  &= ~USB_PORT_STAT_CONNECTION;
 	udev->port_status  |= (1 << USB_PORT_FEAT_C_CONNECTION);
 	spin_unlock(&udev->lock);
@@ -250,7 +252,9 @@ int usbredir_device_port_status(struct usbredir_hub *hub, int rhport, char *buf)
 	if (!udev)
 		return -ENODEV;
 
-	pr_debug("%s port_status 0x%x\n", __func__, udev->port_status);
+	pr_debug("%s %d/%d 0x%x\n", __func__,
+		 udev->hub->id, rhport, udev->port_status);
+
 	/* TODO - the logic on resume/reset etc is really
 	 *   just blindly copied from USBIP.  Make sure
 	 *   this eventually gets thoughtful review and testing. */

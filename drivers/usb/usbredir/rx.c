@@ -17,7 +17,7 @@
 
 #include "usbredir.h"
 
-int rx_loop(void *data)
+int usbredir_rx_loop(void *data)
 {
 	struct usbredir_device *udev = data;
 	int rc;

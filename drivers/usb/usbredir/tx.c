@@ -117,7 +117,7 @@ static void send_unlink(struct usbredir_device *udev,
 	}
 }
 
-int tx_loop(void *data)
+int usbredir_tx_loop(void *data)
 {
 	struct usbredir_device *udev = data;
 	struct usbredir_urb *uurb;

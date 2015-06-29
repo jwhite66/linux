@@ -44,29 +44,6 @@ static void queue_urb(struct usbredir_device *udev, struct urb *urb)
 	spin_unlock(&udev->lists_lock);
 }
 
-void usbredir_urb_cleanup_urblists(struct usbredir_device *udev)
-{
-	struct usbredir_urb *uurb, *tmp;
-
-	spin_lock(&udev->lists_lock);
-	list_for_each_entry_safe(uurb, tmp, &udev->urblist_rx, list) {
-		list_del(&uurb->list);
-		usb_hcd_unlink_urb_from_ep(udev->hub->hcd, uurb->urb);
-		usb_hcd_giveback_urb(udev->hub->hcd, uurb->urb, -ENODEV);
-		kfree(uurb);
-	}
-
-	list_for_each_entry_safe(uurb, tmp, &udev->urblist_tx, list) {
-		list_del(&uurb->list);
-		usb_hcd_unlink_urb_from_ep(udev->hub->hcd, uurb->urb);
-		usb_hcd_giveback_urb(udev->hub->hcd, uurb->urb, -ENODEV);
-		kfree(uurb);
-	}
-	spin_unlock(&udev->lists_lock);
-}
-
-
-
 static bool intercept_urb_request(struct usbredir_device *udev,
 				  struct urb *urb, int *ret)
 {
@@ -121,15 +98,38 @@ static bool intercept_urb_request(struct usbredir_device *udev,
 	return true;
 }
 
-int urb_enqueue(struct usb_hcd *hcd, struct urb *urb, gfp_t mem_flags)
+void usbredir_urb_cleanup_urblists(struct usbredir_device *udev)
+{
+	struct usbredir_urb *uurb, *tmp;
+
+	spin_lock(&udev->lists_lock);
+	list_for_each_entry_safe(uurb, tmp, &udev->urblist_rx, list) {
+		list_del(&uurb->list);
+		usb_hcd_unlink_urb_from_ep(udev->hub->hcd, uurb->urb);
+		usb_hcd_giveback_urb(udev->hub->hcd, uurb->urb, -ENODEV);
+		kfree(uurb);
+	}
+
+	list_for_each_entry_safe(uurb, tmp, &udev->urblist_tx, list) {
+		list_del(&uurb->list);
+		usb_hcd_unlink_urb_from_ep(udev->hub->hcd, uurb->urb);
+		usb_hcd_giveback_urb(udev->hub->hcd, uurb->urb, -ENODEV);
+		kfree(uurb);
+	}
+	spin_unlock(&udev->lists_lock);
+}
+
+
+
+int usbredir_urb_enqueue(struct usb_hcd *hcd, struct urb *urb, gfp_t mem_flags)
 {
 	struct device *dev = &urb->dev->dev;
 	int ret = 0;
 	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
 	struct usbredir_device *udev;
 
-	pr_debug("urb_enqueue: enter, usb_hcd %p urb %p mem_flags %d\n",
-			  hcd, urb, mem_flags);
+	pr_debug("%s: enter, usb_hcd %p urb %p mem_flags %d\n",
+			  __func__, hcd, urb, mem_flags);
 
 	if (urb->status != -EINPROGRESS) {
 		dev_err(dev, "URB already handled!, status %d\n", urb->status);
@@ -160,14 +160,14 @@ int urb_enqueue(struct usb_hcd *hcd, struct urb *urb, gfp_t mem_flags)
 	return ret;
 }
 
-int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
+int usbredir_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 {
 	struct usbredir_urb *uurb;
 	struct usbredir_device *udev;
 	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
 	int ret = 0;
 
-	pr_debug("enter dequeue urb %p\n", urb);
+	pr_debug("%s %p\n", __func__, urb);
 
 	uurb = urb->hcpriv;
 	if (!uurb) {

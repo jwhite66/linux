@@ -19,13 +19,50 @@
    License along with this library; if not, see <http://www.gnu.org/licenses/>.
 */
 
+#if defined(__KERNEL__)
 #include <linux/string.h>
 #include <linux/slab.h>
+#else
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#endif
 
+#if defined(WIN32) || defined(__KERNEL__)
 #include "strtok_r.h"
 #define strtok_r  glibc_strtok_r
+#endif
 
+#if defined(__KERNEL__)
+#define CALLOC(a, b)    kcalloc((a), (b), GFP_KERNEL)
+#define MALLOC(a)       kmalloc((a), GFP_KERNEL)
+#define STRDUP(a)       kstrdup((a), GFP_KERNEL)
+#define FREE kfree
+#else
+#define CALLOC          calloc
+#define MALLOC          malloc
+#define STRDUP          strdup
+#define FREE            free
+#endif
 #include "usbredirfilter.h"
+
+int filter_strtoi(char *str, int *res)
+{
+    long l;
+    int rc = 0;
+#if defined(__KERNEL__)
+    rc = kstrtol(str, 0, &l);
+#else
+    char *ep;
+
+    l = strtol(str, &ep, 0);
+    if (*ep)
+        rc = -1;
+#endif
+    if (rc == 0)
+        *res = (int) l;
+    return rc;
+}
 
 int usbredirfilter_string_to_rules(
     const char *filter_str, const char *token_sep, const char *rule_sep,
@@ -36,7 +73,6 @@ int usbredirfilter_string_to_rules(
     int i, rules_count, *values, ret = 0;
     char *buf = NULL;
     const char *r;
-    long l;
 
     *rules_ret = NULL;
     *rules_count_ret = 0;
@@ -54,12 +90,12 @@ int usbredirfilter_string_to_rules(
         rules_count++;
     }
 
-    rules = kcalloc(rules_count, sizeof(struct usbredirfilter_rule), GFP_KERNEL);
+    rules = CALLOC(rules_count, sizeof(struct usbredirfilter_rule));
     if (!rules)
         return -ENOMEM;
 
     /* Make a copy since strtok mangles the string */
-    buf = kstrdup(filter_str, GFP_KERNEL);
+    buf = STRDUP(filter_str);
     if (!buf) {
         ret = -ENOMEM;
         goto leave;
@@ -73,9 +109,8 @@ int usbredirfilter_string_to_rules(
         values = (int *)&rules[rules_count];
         token = strtok_r(rule, token_sep, &token_saveptr);
         for (i = 0; i < 5 && token; i++) {
-	    if (kstrtol(token, 0, &l))
+	    if (filter_strtoi(token, &values[i]))
 	        break;
-	    values[i] = l;
             token = strtok_r(NULL, token_sep, &token_saveptr);
         }
         if (i != 5 || token != NULL ||
@@ -92,8 +127,8 @@ int usbredirfilter_string_to_rules(
 
 leave:
     if (ret)
-        kfree(rules);
-    kfree(buf);
+        FREE(rules);
+    FREE(buf);
     return ret;
 }
 
@@ -107,7 +142,7 @@ char *usbredirfilter_rules_to_string(const struct usbredirfilter_rule *rules,
         return NULL;
 
     /* We need 28 bytes per rule in the worst case */
-    str = kmalloc(28 * rules_count + 1, GFP_KERNEL);
+    str = MALLOC(28 * rules_count + 1);
     if (!str)
         return NULL;
 
@@ -220,7 +255,7 @@ int usbredirfilter_verify(
     return 0;
 }
 
-#if defined(TODO_HACK_JPW)
+#if ! defined(__KERNEL__)
 void usbredirfilter_print(
     const struct usbredirfilter_rule *rules, int rules_count, FILE *out)
 {

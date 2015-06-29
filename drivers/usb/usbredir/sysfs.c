@@ -20,19 +20,12 @@
 #include "usbredir.h"
 
 
-/* Sysfs entry to show port status */
 static ssize_t status_show(struct device_driver *driver, char *out)
 {
 	return usbredir_hub_show_global_status(out);
 }
 static DRIVER_ATTR_RO(status);
 
-/*
- * To start a new USBREDIR attachment, a user space program needs to setup a
- * connection and then write its socket descriptor along with a unique
- * identifer into the 'attach' sysfs file.
- *
- */
 static ssize_t store_attach(struct device_driver *driver,
 			    const char *buf, size_t count)
 {
@@ -42,6 +35,7 @@ static ssize_t store_attach(struct device_driver *driver,
 	int err;
 
 	/*
+	 * usbredir sysfs attach file
 	 * @sockfd: socket descriptor of an established TCP connection
 	 * @devid: user supplied unique device identifier
 	 */
@@ -51,7 +45,6 @@ static ssize_t store_attach(struct device_driver *driver,
 
 	pr_debug("attach sockfd(%u) devid(%s)\n", sockfd, devid);
 
-	/* Extract socket from fd. */
 	socket = sockfd_lookup(sockfd, &err);
 	if (!socket)
 		return -EINVAL;
@@ -80,6 +73,7 @@ static ssize_t store_detach(struct device_driver *driver,
 	struct usbredir_device *udev;
 
 	/*
+	 * usbredir sysfs detach file
 	 * @devid: user supplied unique device identifier
 	 */
 	memset(devid, 0, sizeof(devid));
@@ -103,6 +97,27 @@ static ssize_t store_detach(struct device_driver *driver,
 static DRIVER_ATTR(detach, S_IWUSR, NULL, store_detach);
 
 
+/**
+ * usbredir_sysfs_register()
+ * @driver	The platform driver associated with usbredir
+ *
+ * This function will register new sysfs files called 'attach', 'detach',
+ * and 'status'.
+ *
+ * To start a new connection, a user space program should establish
+ * a socket that is connected to a process that provides a USB device
+ * and that speaks the USBREDIR protocol.  The usbredirserver program
+ * is one such example.
+ *
+ * Next, the user space program should write that socket as well as a
+ * unique device id of no more than 255 characters to the 'attach' file.
+ * That should begin a connection.
+ *
+ * Writing the same id to the 'detach' file should end the connection,
+ * and examining the contents of the 'status' file should show the number
+ * of connections.
+ *
+ */
 int usbredir_sysfs_register(struct device_driver *driver)
 {
 	int ret;
@@ -118,10 +133,13 @@ int usbredir_sysfs_register(struct device_driver *driver)
 	return driver_create_file(driver, &driver_attr_attach);
 }
 
+/**
+ * usbredir_sysfs_unregister()
+ * @dev The device driver associated with usbredir
+ */
 void usbredir_sysfs_unregister(struct device_driver *dev)
 {
 	driver_remove_file(dev, &driver_attr_status);
 	driver_remove_file(dev, &driver_attr_detach);
 	driver_remove_file(dev, &driver_attr_attach);
 }
-

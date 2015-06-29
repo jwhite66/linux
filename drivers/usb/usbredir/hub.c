@@ -32,7 +32,7 @@ static int usbredir_hcd_start(struct usb_hcd *hcd)
 	int i;
 
 	spin_lock(&hub->lock);
-	pr_debug("%s %p\n", __func__, hub);
+	pr_debug("%s %d\n", __func__, hub->id);
 
 	hub->device_count = devices_per_hub;
 	hub->devices = kcalloc(hub->device_count, sizeof(*hub->devices),
@@ -57,7 +57,7 @@ static void usbredir_hub_stop(struct usbredir_hub *hub)
 {
 	int i;
 
-	pr_debug("usbredir_hub_stop %p\n", hub);
+	pr_debug("%s %d\n", __func__, hub->id);
 
 	for (i = 0; i < hub->device_count && hub->devices; i++) {
 		usbredir_device_disconnect(hub->devices + i);
@@ -76,23 +76,12 @@ static void usbredir_hcd_stop(struct usb_hcd *hcd)
 	usbredir_hub_stop(usbredir_hub_from_hcd(hcd));
 }
 
-static int get_frame_number(struct usb_hcd *hcd)
+static int usbredir_get_frame_number(struct usb_hcd *hcd)
 {
-	pr_err("get_frame_number: Not yet implemented\n"); /* TODO */
+	pr_err("TODO: get_frame_number: not implemented\n");
 	return 0;
 }
 
-/*
- * Returns 0 if the status hasn't changed, or the number of bytes in buf.
- * Ports are 0-indexed from the HCD point of view,
- * and 1-indexed from the USB core pointer of view.
- *
- * @buf: a bitmap to show which port status has been changed.
- *  bit  0: reserved
- *  bit  1: the status of port 0 has been changed.
- *  bit  2: the status of port 1 has been changed.
- *  ...
- */
 static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 {
 	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
@@ -100,9 +89,9 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 	int		rhport;
 	int		changed = 0;
 
-	pr_debug("usbredir_hub_status for %p\n", hub);
-
 	spin_lock(&hub->lock);
+
+	pr_debug("%s %d\n", __func__, hub->id);
 
 	ret = DIV_ROUND_UP(hub->device_count + 1, 8);
 	memset(buf, 0, ret);
@@ -139,6 +128,8 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 	if ((hcd->state == HC_STATE_SUSPENDED) && (changed == 1))
 		usb_hcd_resume_root_hub(hcd);
 
+	pr_debug("%s %schanged\n", __func__, changed ? "" : "un");
+
 	return changed ? ret : 0;
 }
 
@@ -168,9 +159,9 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 
 	hub = usbredir_hub_from_hcd(hcd);
 
-	pr_debug("usbredir_hub_control ");
-	pr_debug("[hcd %p|wValue %x|wIndex%u|wLength %u]",
-		 hcd, wValue, wIndex, wLength);
+	pr_debug("%s hub %d: ", __func__, hub->id);
+	pr_debug("[wValue %x|wIndex%u|wLength %u]",
+		 wValue, wIndex, wLength);
 
 	/* wIndex is 1 based */
 	rhport = ((__u8)(wIndex & 0x00ff)) - 1;
@@ -202,7 +193,8 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		return usbredir_device_port_status(hub, rhport, buf);
 	default:
 		pr_debug(" unknown type %x\n", typeReq);
-		pr_err("usbredir_hub_control: no handler for request %x\n", typeReq);
+		pr_err("usbredir_hub_control: no handler for request %x\n",
+		       typeReq);
 
 		/* "protocol stall" on error */
 		ret = -EPIPE;
@@ -212,7 +204,7 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 
 #ifdef CONFIG_PM
 /* FIXME: suspend/resume */
-static int bus_suspend(struct usb_hcd *hcd)
+static int usbredir_bus_suspend(struct usb_hcd *hcd)
 {
 	dev_dbg(&hcd->self.root_hub->dev, "%s\n", __func__);
 
@@ -221,7 +213,7 @@ static int bus_suspend(struct usb_hcd *hcd)
 	return 0;
 }
 
-static int bus_resume(struct usb_hcd *hcd)
+static int usbredir_bus_resume(struct usb_hcd *hcd)
 {
 	int rc = 0;
 
@@ -235,16 +227,15 @@ static int bus_resume(struct usb_hcd *hcd)
 }
 #else
 
-#define bus_suspend      NULL
-#define bus_resume       NULL
+#define usbredir_bus_suspend      NULL
+#define usbredir_bus_resume       NULL
 #endif
 
 
 static void usbredir_release_hub_dev(struct device *dev)
 {
 	/* TODO - what do we need to implement here? */
-	/*        Need to figure out how to trigger this... */
-	pr_err("usbredir_release_hub_dev %p: not implemented\n", dev);
+	pr_err("%s: not implemented\n", __func__);
 }
 
 static int usbredir_register_hub(struct usbredir_hub *hub)
@@ -281,15 +272,15 @@ static struct hc_driver usbredir_hc_driver = {
 	.start		= usbredir_hcd_start,
 	.stop		= usbredir_hcd_stop,
 
-	.urb_enqueue	= urb_enqueue,
-	.urb_dequeue	= urb_dequeue,
+	.urb_enqueue	= usbredir_urb_enqueue,
+	.urb_dequeue	= usbredir_urb_dequeue,
 
-	.get_frame_number = get_frame_number,
+	.get_frame_number = usbredir_get_frame_number,
 
 	.hub_status_data = usbredir_hub_status,
 	.hub_control    = usbredir_hub_control,
-	.bus_suspend	= bus_suspend,
-	.bus_resume	= bus_resume,
+	.bus_suspend	= usbredir_bus_suspend,
+	.bus_resume	= usbredir_bus_resume,
 };
 
 

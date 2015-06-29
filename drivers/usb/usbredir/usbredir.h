@@ -23,6 +23,33 @@
 #define USBREDIR_MODULE_VERSION	"1.0"
 
 
+/**
+ * struct usbredir_device - Describe a redirected usb device
+ * @lock		spinlock for port_status, usb_dev, and other misc fields
+ * @active		indicates whether the device is actively connected
+ * @usb_dev		The usb device actively in use; captured on our first
+ *			useful control urb.  We mostly use it to signal that
+ *			a device is in use.
+ * @hub			The root hub that is associated with this device.
+ * @port_status		A status variable to track usb/core.c style status;
+ *			e.g. USB_PORT_STAT_ENABLE et all
+ * @socket		The socket used to connect to the remote device
+ * @parser		A parser which drives the socket
+ * @rx			The task structure for the receive thread
+ * @tx			The task structure for the transmit thread
+ * @devid		A user space provided id for this device; must be unique
+ * @connect_header	Stored USBREDIR connection header information
+ * @info_header		Stored USBREDIR connection information
+ * @ep_info_header	Stored USBREDIR endpoint header info
+ * @rhport		0 based port number on our root hub
+ * @lists_lock		A spinlock just for the urb and unlink lists
+ * @urblist_tx		A list of urb's ready to be transmitted
+ * @urblist_rx		A list of urbs already transmitted, awaiting
+ *                      a response
+ * @unlink_tx		A list of urb's to be send to be unlinked
+ * @unlink_xx		A list of urb's we have requested cancellation of
+ * @waitq_tx		Wait queue the transmit thread sleeps on
+ */
 struct usbredir_device {
 	spinlock_t lock;
 
@@ -39,36 +66,44 @@ struct usbredir_device {
 	struct task_struct *rx;
 	struct task_struct *tx;
 
-	/*
-	 * devid specifies a remote usb device; user space
-	 *  is responsible for seeing that they are unique
-	 */
 	char *devid;
 
-	/* Store information transmitted by the remote side */
 	struct usb_redir_device_connect_header connect_header;
 	struct usb_redir_interface_info_header info_header;
 	struct usb_redir_ep_info_header ep_info_header;
 
-	/* root-hub port to which this device is attached */
 	__u32 rhport;
 
-	/* lock for the below link lists */
 	spinlock_t lists_lock;
 
-	/* list of types usbredir_urb */
 	struct list_head urblist_tx;
 	struct list_head urblist_rx;
 
-	/* list of types usbredir_unlink */
 	struct list_head unlink_tx;
 	struct list_head unlink_rx;
 
-	/* tx thread sleeps for this queue */
 	wait_queue_head_t waitq_tx;
 };
 
-/* Structure to hold a USB hub */
+/**
+ * struct usbredir_hub - Describe a virtual usb hub, which can hold
+ *			 redirected usb devices
+ *
+ * @lock		Spinlock controlling access to variables,
+ *			mostly needed for timeout and resuming flags
+ * @list		Place holder for stashing inside a larger hub list
+ * @id			A numeric identifier for this hub
+ * @pdev		A registered platform device for this hub
+ * @hcd			The usb_hcd associated with this hub
+ * @device_count	The number of devices that can be connected to this hub
+ * @devices		An array of devices
+ * @aseqnum		Sequence number for transmissions
+ * @resuming		Flag to indicate we are resuming
+ * @re_timeout		General settle timeout for our hub
+ *
+ * The usbredir_hubs are allocated dynamically, as needed, but not freed.
+ * A new devices is assigned to the first hub with a free slot.
+ */
 struct usbredir_hub {
 	spinlock_t lock;
 	struct list_head	list;
@@ -85,7 +120,13 @@ struct usbredir_hub {
 	unsigned long re_timeout;
 };
 
-/* Structure to hold a urb as we process it */
+/**
+ * struct usbredir_urb - Hold our information regarding a URB
+ * @seqnum		Sequence number of the urb
+ * @list		Place holder to keep it in device/urblist_[rt]x
+ * @udev		A pointer to our associated device
+ * @urb			A pointer to the associated urb
+ */
 struct usbredir_urb {
 	int seqnum;
 	struct list_head list;
@@ -94,14 +135,17 @@ struct usbredir_urb {
 	struct urb *urb;
 };
 
-/* Structure to hold an unlink request as we process it */
+/**
+ * struct usbredir_unlink  - Hold unlink requests
+ * @seqnum		Sequence number of this request
+ * @list		Place holder to keep it in device/unlink_[rt]x
+ * @unlink_seqnum	Sequence number of the urb to unlink
+ */
 struct usbredir_unlink {
-	/* seqnum of this request */
 	int seqnum;
 
 	struct list_head list;
 
-	/* seqnum of the unlink target */
 	int unlink_seqnum;
 };
 
@@ -149,15 +193,15 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 struct usbredirparser *redir_parser_init(void *priv);
 
 /* rx.c */
-int rx_loop(void *data);
+int usbredir_rx_loop(void *data);
 
 /* tx.c */
-int tx_loop(void *data);
+int usbredir_tx_loop(void *data);
 
 /* urb.c */
-int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
+int usbredir_urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 			    gfp_t mem_flags);
-int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status);
+int usbredir_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status);
 struct urb *usbredir_pop_rx_urb(struct usbredir_device *udev, int seqnum);
 void usbredir_urb_cleanup_urblists(struct usbredir_device *udev);
 
