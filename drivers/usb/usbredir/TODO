@@ -1,6 +1,9 @@
 TODO:
-  *  All the prints of port # should also print hub #
+  *  Note - during testing, having a device die unexpectedly
+     could go on to cause fairly serious problems.  Need to
+     explore that.
   *  Still getting sporadic failures
+     - One clue - got an unexpected rc from the write in redir.c
   *  Hmm.  KFP_ATOMIC on our mallocs may be better than _KERNEL...
   *  Read and deal with the many TODOs
   *  Not just hacking the usbredirparser, but proper patches

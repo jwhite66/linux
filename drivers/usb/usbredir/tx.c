@@ -143,6 +143,7 @@ int usbredir_tx_loop(void *data)
 			 ! atomic_read(&udev->active)));
 	}
 
+	pr_debug("%s exit\n", __func__);
 	usbredir_device_disconnect(udev);
 	usbredir_device_deallocate(udev, true, false);
 

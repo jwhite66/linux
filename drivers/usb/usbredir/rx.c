@@ -31,6 +31,8 @@ int usbredir_rx_loop(void *data)
 		}
 	}
 
+	pr_debug("%s exit\n", __func__);
+
 	usbredir_device_disconnect(udev);
 	usbredir_device_deallocate(udev, false, true);
 

@@ -99,8 +99,8 @@ static int redir_write(void *priv, uint8_t *data, int count)
 	rc = kernel_sendmsg(socket, &msg, &iov, 1, count);
 	/* TODO - In theory, a return of 0 should be okay,
 	 *        but, again, in theory, it will cause an error. */
-	if (rc == 0)
-		pr_err("Error: TODO - a 0 byte write return happened.\n");
+	if (rc <= 0)
+		pr_err("Error: TODO - unexpected write return code %d.\n", rc);
 
 	return rc;
 }
