@@ -57,8 +57,6 @@ static void usbredir_hub_stop(struct usbredir_hub *hub)
 {
 	int i;
 
-	spin_lock(&hub->lock);
-
 	pr_debug("usbredir_hub_stop %p\n", hub);
 
 	for (i = 0; i < hub->device_count && hub->devices; i++) {
@@ -66,10 +64,10 @@ static void usbredir_hub_stop(struct usbredir_hub *hub)
 		usbredir_device_deallocate(hub->devices + i, true, true);
 	}
 
+	spin_lock(&hub->lock);
 	kfree(hub->devices);
 	hub->devices = NULL;
 	hub->device_count = 0;
-
 	spin_unlock(&hub->lock);
 }
 
@@ -418,6 +416,7 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 			spin_lock(&udev->lock);
 			if (!atomic_read(&udev->active)) {
 				found++;
+				/* Note: lock is *held* */
 				break;
 			}
 			spin_unlock(&udev->lock);

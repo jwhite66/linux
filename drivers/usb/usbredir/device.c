@@ -59,6 +59,7 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 
 	udev->port_status = 0;
 
+	/* TODO - safe to hold udev lock through thread creation? */
 	sprintf(pname, "usbredir/rx:%d", udev->rhport);
 	udev->rx = kthread_run(rx_loop, udev, pname);
 	sprintf(pname, "usbredir/tx:%d", udev->rhport);
