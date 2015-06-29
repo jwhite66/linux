@@ -66,6 +66,22 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 	udev->tx = kthread_run(tx_loop, udev, pname);
 }
 
+void usbredir_device_cleanup_unlink(struct usbredir_device *udev)
+{
+	struct usbredir_unlink *unlink, *tmp;
+
+	spin_lock(&udev->lists_lock);
+	list_for_each_entry_safe(unlink, tmp, &udev->unlink_tx, list) {
+		list_del(&unlink->list);
+		kfree(unlink);
+	}
+
+	list_for_each_entry_safe(unlink, tmp, &udev->unlink_rx, list) {
+		list_del(&unlink->list);
+		kfree(unlink);
+	}
+	spin_unlock(&udev->lists_lock);
+}
 
 void usbredir_device_deallocate(struct usbredir_device *udev,
 				bool stoprx, bool stoptx)
@@ -113,9 +129,10 @@ void usbredir_device_deallocate(struct usbredir_device *udev,
 		udev->parser = NULL;
 	}
 
-	/* TODO urblist_xx, unlink_xx */
-	spin_unlock(&udev->lock);
+	usbredir_device_cleanup_unlink(udev);
+	usbredir_urb_cleanup_urblists(udev);
 
+	spin_unlock(&udev->lock);
 }
 
 static u32 speed_to_portflag(enum usb_device_speed speed)

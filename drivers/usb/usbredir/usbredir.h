@@ -24,7 +24,6 @@
 
 
 struct usbredir_device {
-	/* TODO - a thoughtful look into the locks is overdue */
 	spinlock_t lock;
 
 	atomic_t active;
@@ -55,7 +54,6 @@ struct usbredir_device {
 	__u32 rhport;
 
 	/* lock for the below link lists */
-	/* TODO - Do away with in favor of a single lock? */
 	spinlock_t lists_lock;
 
 	/* list of types usbredir_urb */
@@ -151,17 +149,17 @@ int usbredir_device_set_port_feature(struct usbredir_hub *hub,
 struct usbredirparser *redir_parser_init(void *priv);
 
 /* rx.c */
-struct urb *rx_pop_urb(struct usbredir_device *udev, int seqnum);
 int rx_loop(void *data);
 
 /* tx.c */
-void tx_urb(struct usbredir_device *udev, struct urb *urb);
 int tx_loop(void *data);
 
 /* urb.c */
 int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 			    gfp_t mem_flags);
 int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status);
+struct urb *usbredir_pop_rx_urb(struct usbredir_device *udev, int seqnum);
+void usbredir_urb_cleanup_urblists(struct usbredir_device *udev);
 
 /* Fast lookup functions */
 static inline struct usbredir_hub *usbredir_hub_from_hcd(struct usb_hcd *hcd)
@@ -173,7 +171,7 @@ static inline int usbredir_hub_seqnum(struct usbredir_hub *hub)
 {
 	int ret = atomic_inc_return(&hub->aseqnum);
 	/* Atomics are only guaranteed to 24 bits */
-	if (ret < 0 || ret > (1 >> 23)) {
+	if (ret < 0 || ret > (1 << 23)) {
 		ret = 1;
 		atomic_set(&hub->aseqnum, 1);
 	}

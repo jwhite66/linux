@@ -97,12 +97,10 @@ static int redir_write(void *priv, uint8_t *data, int count)
 	spin_unlock(&udev->lock);
 
 	rc = kernel_sendmsg(socket, &msg, &iov, 1, count);
-	if (rc != count) {
-		/* TODO - is a short write truly an error condition? */
-		pr_err("Error %d writing %d bytes\n", rc, count);
-		/* TODO - do we need a better way to abort? */
-		return -1;
-	}
+	/* TODO - In theory, a return of 0 should be okay,
+	 *        but, again, in theory, it will cause an error. */
+	if (rc == 0)
+		pr_err("Error: TODO - a 0 byte write return happened.\n");
 
 	return rc;
 }
@@ -140,7 +138,7 @@ static void redir_free_lock(void *lock)
    Note that the passed in packet-type-specific-header's lifetime is only
    guarenteed to be that of the callback.
 
-   Control packets: */
+*/
 static void redir_hello(void *priv, struct usb_redir_hello_header *hello)
 {
 	pr_debug("Hello!\n");
@@ -192,23 +190,10 @@ static void redir_interface_info(void *priv,
 	spin_unlock(&udev->lock);
 }
 
-/* Macros to go from an endpoint address to an index for our ep array */
-#define EP2I(ep_address) (((ep_address & 0x80) >> 3) | (ep_address & 0x0f))
-#define I2EP(i) (((i & 0x10) << 3) | (i & 0x0f))
-
 static void redir_ep_info(void *priv,
 	struct usb_redir_ep_info_header *ep_info)
 {
 	struct usbredir_device *udev = (struct usbredir_device *) priv;
-	int i;
-
-	for (i = 0; i < 32; i++) {
-		if (ep_info->type[i] != usb_redir_type_invalid) {
-			pr_debug("endpoint: i %d, %02X, type: %d, interval: %d, interface: %d",
-				i, I2EP(i), (int)ep_info->type[i], (int)ep_info->interval[i],
-				(int)ep_info->interface[i]);
-		}
-	}
 
 	spin_lock(&udev->lock);
 	udev->ep_info_header = *ep_info;
@@ -363,6 +348,28 @@ static void redir_bulk_receiving_status(void *priv,
 	TODO_IMPLEMENT;
 }
 
+static int redir_map_status(int redir_status)
+{
+	switch (redir_status) {
+	case usb_redir_success:
+		return 0;
+	case usb_redir_cancelled:
+		return -ENOENT;
+	case usb_redir_inval:
+		return -EINVAL;
+	case usb_redir_stall:
+		return -EPIPE;
+	case usb_redir_timeout:
+		return -ETIMEDOUT;
+	case usb_redir_babble:
+		return -EOVERFLOW;
+		/* Catchall error condition */
+	case usb_redir_ioerror:
+	default:
+		return -ENODEV;
+	}
+}
+
 
 static void redir_control_packet(void *priv,
 	uint64_t id,
@@ -372,21 +379,15 @@ static void redir_control_packet(void *priv,
 	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	struct urb *urb;
 
-	urb = rx_pop_urb(udev, id);
+	urb = usbredir_pop_rx_urb(udev, id);
 	if (!urb) {
 		pr_err("Error: control id %lu with no matching entry.\n",
 		       (unsigned long) id);
 		return;
 	}
 
-/*pr_debug("JPW handling control packet response, id %ld\n", (long) id);
-pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length,
-data_len);
-print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len); */
-
 	/* TODO - handle more than this flavor... */
-	/* TODO - map statii correctly */
-	urb->status = control_header->status;
+	urb->status = redir_map_status(control_header->status);
 	if (usb_pipein(urb->pipe)) {
 		urb->actual_length = min_t(u32, data_len,
 					 urb->transfer_buffer_length);
@@ -408,25 +409,14 @@ static void redir_bulk_packet(void *priv,
 	struct usbredir_device *udev = (struct usbredir_device *) priv;
 	struct urb *urb;
 
-	urb = rx_pop_urb(udev, id);
+	urb = usbredir_pop_rx_urb(udev, id);
 	if (!urb) {
 		pr_err("Error: bulk id %lu with no matching entry.\n",
 		       (unsigned long) id);
 		return;
 	}
 
-/*pr_debug("JPW handling bulk packet response, id %ld\n", (long) id);
-pr_debug("ep %d, status %d, length %d\n", bulk_header->endpoint,
-	bulk_header->status,
-	 bulk_header->length);
-pr_debug("stream_id %d, length_high %d\n", bulk_header->stream_id,
-	 bulk_header->length_high);
-pr_debug("tbuf len %d, data length %d:\n", urb->transfer_buffer_length,
-	data_len);
-print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len); */
-
-	/* TODO - map statii correctly */
-	urb->status = bulk_header->status;
+	urb->status = redir_map_status(bulk_header->status);
 	if (usb_pipein(urb->pipe)) {
 		urb->actual_length = min_t(u32, data_len,
 					 urb->transfer_buffer_length);
@@ -436,7 +426,7 @@ print_hex_dump_bytes("", DUMP_PREFIX_NONE, data, data_len); */
 		urb->actual_length = bulk_header->length;
 	}
 
-	/* TODO - what to do with length, stream_id, and length_high */
+	/* TODO - what to do with stream_id */
 	/* TODO - handle more than this flavor... */
 
 	usb_hcd_unlink_urb_from_ep(udev->hub->hcd, urb);
@@ -522,6 +512,8 @@ struct usbredirparser *redir_parser_init(void *priv)
 	parser->buffered_bulk_packet_func = redir_buffered_bulk_packet;
 
 	memset(caps, 0, sizeof(caps));
+	usbredirparser_caps_set_cap(caps, usb_redir_cap_32bits_bulk_length);
+
 	/* TODO - figure out which of these we really can use */
 #if defined(USE_ALL_CAPS)
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_bulk_streams);
@@ -531,7 +523,6 @@ struct usbredirparser *redir_parser_init(void *priv)
 	usbredirparser_caps_set_cap(caps,
 				usb_redir_cap_ep_info_max_packet_size);
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_64bits_ids);
-	usbredirparser_caps_set_cap(caps, usb_redir_cap_32bits_bulk_length);
 	usbredirparser_caps_set_cap(caps, usb_redir_cap_bulk_receiving);
 #endif
 

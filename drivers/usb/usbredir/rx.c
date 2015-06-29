@@ -14,56 +14,8 @@
  */
 
 #include <linux/kthread.h>
-#include <linux/slab.h>
 
 #include "usbredir.h"
-
-/* get URB from transmitted urb queue. */
-struct urb *rx_pop_urb(struct usbredir_device *udev, int seqnum)
-{
-	struct usbredir_urb *uurb, *tmp;
-	struct urb *urb = NULL;
-	int status;
-
-	spin_lock(&udev->lists_lock);
-
-	list_for_each_entry_safe(uurb, tmp, &udev->urblist_rx, list) {
-		if (uurb->seqnum != seqnum)
-			continue;
-
-		urb = uurb->urb;
-		status = urb->status;
-
-		/*pr_debug("usbredir: find urb %p vurb %p seqnum %u\n",
-			 urb, uurb, seqnum); */
-
-		switch (status) {
-		case -ENOENT:
-			/* fall through */
-		case -ECONNRESET:
-			dev_info(&urb->dev->dev,
-				 "urb %p was unlinked %ssynchronuously.\n", urb,
-				 status == -ENOENT ? "" : "a");
-			break;
-		case -EINPROGRESS:
-			/* no info output */
-			break;
-		default:
-			dev_info(&urb->dev->dev,
-				 "urb %p may be in a error, status %d\n", urb,
-				 status);
-		}
-
-		list_del(&uurb->list);
-		kfree(uurb);
-		urb->hcpriv = NULL;
-
-		break;
-	}
-	spin_unlock(&udev->lists_lock);
-
-	return urb;
-}
 
 int rx_loop(void *data)
 {

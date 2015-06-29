@@ -1,12 +1,9 @@
 TODO:
-  *  Getting sporadic failures, and we can't read/write data
-     to the drive just yet.  Probably something not quite right.
+  *  All the prints of port # should also print hub #
+  *  Still getting sporadic failures
   *  Hmm.  KFP_ATOMIC on our mallocs may be better than _KERNEL...
   *  Read and deal with the many TODOs
-  *  Make a dequeue_urb work correctly.
-      - Probably want to send a message, if possible,
-        but then really do the dequeue as well
   *  Not just hacking the usbredirparser, but proper patches
+     - The filter needs love.  Use strsep, not strtok?
   *  Expose a sysfs attribute and have udev use it
   *  Turn on more capabilities and watch it go
-  *  Check the seqnum against a max, and wrap it deliberately

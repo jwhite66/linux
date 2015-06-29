@@ -20,13 +20,108 @@
 
 #include "usbredir.h"
 
-/* TODO - this logic was mostly copied from USBIP.
- *        While some of it has been dissected, it
- *        really needs a much more thoughtful review
- *        and analysis */
+static void queue_urb(struct usbredir_device *udev, struct urb *urb)
+{
+	struct usbredir_urb *uurb;
 
-int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
-			    gfp_t mem_flags)
+	uurb = kzalloc(sizeof(struct usbredir_urb), GFP_ATOMIC);
+	if (!uurb) {
+		usbredir_device_disconnect(udev);
+		usbredir_device_deallocate(udev, true, true);
+		return;
+	}
+
+	spin_lock(&udev->lists_lock);
+
+	uurb->seqnum = usbredir_hub_seqnum(udev->hub);
+
+	uurb->udev = udev;
+	uurb->urb = urb;
+
+	urb->hcpriv = (void *) uurb;
+
+	list_add_tail(&uurb->list, &udev->urblist_tx);
+	spin_unlock(&udev->lists_lock);
+}
+
+void usbredir_urb_cleanup_urblists(struct usbredir_device *udev)
+{
+	struct usbredir_urb *uurb, *tmp;
+
+	spin_lock(&udev->lists_lock);
+	list_for_each_entry_safe(uurb, tmp, &udev->urblist_rx, list) {
+		list_del(&uurb->list);
+		usb_hcd_unlink_urb_from_ep(udev->hub->hcd, uurb->urb);
+		usb_hcd_giveback_urb(udev->hub->hcd, uurb->urb, -ENODEV);
+		kfree(uurb);
+	}
+
+	list_for_each_entry_safe(uurb, tmp, &udev->urblist_tx, list) {
+		list_del(&uurb->list);
+		usb_hcd_unlink_urb_from_ep(udev->hub->hcd, uurb->urb);
+		usb_hcd_giveback_urb(udev->hub->hcd, uurb->urb, -ENODEV);
+		kfree(uurb);
+	}
+	spin_unlock(&udev->lists_lock);
+}
+
+
+
+static bool intercept_urb_request(struct usbredir_device *udev,
+				  struct urb *urb, int *ret)
+{
+	struct device *dev = &urb->dev->dev;
+	__u8 type = usb_pipetype(urb->pipe);
+	struct usb_ctrlrequest *ctrlreq =
+		(struct usb_ctrlrequest *) urb->setup_packet;
+
+	if (usb_pipedevice(urb->pipe) != 0)
+		return false;
+
+	if (type != PIPE_CONTROL || ! ctrlreq) {
+		dev_err(dev, "invalid request to devnum 0; type %x, req %p \n",
+			type, ctrlreq);
+		*ret = -EINVAL;
+		return true;
+	}
+
+	if (ctrlreq->bRequest == USB_REQ_GET_DESCRIPTOR) {
+		pr_debug("Requesting descriptor; wValue %x\n", ctrlreq->wValue);
+
+		usb_put_dev(udev->usb_dev);
+		udev->usb_dev = usb_get_dev(urb->dev);
+
+		if (ctrlreq->wValue == cpu_to_le16(USB_DT_DEVICE << 8))
+			pr_debug("TODO: GetDescriptor unexpected.\n");
+
+		return false;
+	}
+
+	if (ctrlreq->bRequest == USB_REQ_SET_ADDRESS) {
+		dev_info(dev, "SetAddress Request (%d) to port %d\n",
+			 ctrlreq->wValue, udev->rhport);
+
+		usb_put_dev(udev->usb_dev);
+		udev->usb_dev = usb_get_dev(urb->dev);
+
+		if (urb->status == -EINPROGRESS) {
+			/* This request is successfully completed. */
+			/* If not -EINPROGRESS, possibly unlinked. */
+			urb->status = 0;
+		}
+		return true;
+	}
+
+	dev_err(dev,
+		"invalid request to devnum 0 bRequest %u, wValue %u\n",
+		ctrlreq->bRequest,
+		ctrlreq->wValue);
+	*ret =  -EINVAL;
+
+	return true;
+}
+
+int urb_enqueue(struct usb_hcd *hcd, struct urb *urb, gfp_t mem_flags)
 {
 	struct device *dev = &urb->dev->dev;
 	int ret = 0;
@@ -37,91 +132,31 @@ int urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 			  hcd, urb, mem_flags);
 
 	if (urb->status != -EINPROGRESS) {
-		dev_err(dev, "URB already unlinked!, status %d\n", urb->status);
+		dev_err(dev, "URB already handled!, status %d\n", urb->status);
 		return urb->status;
 	}
 
 	udev = hub->devices + urb->dev->portnum - 1;
 
-	/* refuse enqueue for dead connection */
 	if (!atomic_read(&udev->active)) {
 		dev_err(dev, "enqueue for inactive port %d\n", udev->rhport);
 		return -ENODEV;
 	}
 
 	ret = usb_hcd_link_urb_to_ep(hcd, urb);
-	if (ret)
-		goto no_need_unlink;
-
-	/*
-	 * The enumeration process is as follows;
-	 *
-	 *  1. Get_Descriptor request to DevAddrs(0) EndPoint(0)
-	 *     to get max packet length of default pipe
-	 *
-	 *  2. Set_Address request to DevAddr(0) EndPoint(0)
-	 *
-	 */
-	if (usb_pipedevice(urb->pipe) == 0) {
-		__u8 type = usb_pipetype(urb->pipe);
-		struct usb_ctrlrequest *ctrlreq =
-			(struct usb_ctrlrequest *) urb->setup_packet;
-
-		if (type != PIPE_CONTROL || !ctrlreq) {
-			dev_err(dev, "invalid request to devnum 0\n");
-			ret = -EINVAL;
-			goto no_need_xmit;
-		}
-
-		switch (ctrlreq->bRequest) {
-		case USB_REQ_SET_ADDRESS:
-			/* set_address may come when a device is reset */
-			dev_info(dev, "SetAddress Request (%d) to port %d\n",
-				 ctrlreq->wValue, udev->rhport);
-
-			usb_put_dev(udev->usb_dev);
-			udev->usb_dev = usb_get_dev(urb->dev);
-
-			if (urb->status == -EINPROGRESS) {
-				/* This request is successfully completed. */
-				/* If not -EINPROGRESS, possibly unlinked. */
-				urb->status = 0;
-			}
-
-			goto no_need_xmit;
-
-		case USB_REQ_GET_DESCRIPTOR:
-			pr_debug("Requesting descriptor; wValue %x\n",
-				 ctrlreq->wValue);
-			if (ctrlreq->wValue == cpu_to_le16(USB_DT_DEVICE << 8))
-				pr_debug(
-					"Not yet?:Get_Descriptor to device 0 (get max pipe size)\n");
-
-			usb_put_dev(udev->usb_dev);
-			udev->usb_dev = usb_get_dev(urb->dev);
-			goto out;
-
-		default:
-			/* NOT REACHED */
-			dev_err(dev,
-				"invalid request to devnum 0 bRequest %u, wValue %u\n",
-				ctrlreq->bRequest,
-				ctrlreq->wValue);
-			ret =  -EINVAL;
-			goto no_need_xmit;
-		}
-
+	if (ret) {
+		usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
+		return ret;
 	}
 
-out:
-	tx_urb(udev, urb);
+	if (intercept_urb_request(udev, urb, &ret)) {
+		usb_hcd_unlink_urb_from_ep(hcd, urb);
+		usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
+		return ret;
+	}
 
-	return 0;
-
-no_need_xmit:
-	usb_hcd_unlink_urb_from_ep(hcd, urb);
-no_need_unlink:
-	usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
+	queue_urb(udev, urb);
+	wake_up_interruptible(&udev->waitq_tx);
 	return ret;
 }
 
@@ -130,6 +165,7 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 	struct usbredir_urb *uurb;
 	struct usbredir_device *udev;
 	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
+	int ret = 0;
 
 	pr_debug("enter dequeue urb %p\n", urb);
 
@@ -140,24 +176,37 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		return 0;
 	}
 
-	/* TODO - this is not tidy... */
-	{
-		int ret = 0;
-
-		ret = usb_hcd_check_unlink_urb(hcd, urb, status);
-		if (ret) {
-			return ret;
-		}
+	ret = usb_hcd_check_unlink_urb(hcd, urb, status);
+	if (ret) {
+		/* TODO - figure out if this is an unlink send case as well */
+		return ret;
 	}
 
-	 /* TODO - understand this comment: 'send unlink request here?' */
 	udev = uurb->udev;
+	if (atomic_read(&udev->active)) {
+		struct usbredir_unlink *unlink;
 
-	if (!udev->socket) {
-		/* tcp connection is closed */
 		spin_lock(&udev->lists_lock);
 
-		pr_info("device %p seems to be disconnected\n", udev);
+		unlink = kzalloc(sizeof(struct usbredir_unlink), GFP_ATOMIC);
+		if (!unlink) {
+			spin_unlock(&udev->lists_lock);
+			/* TODO complain somehow... */
+			return -ENOMEM;
+		}
+
+		unlink->seqnum = usbredir_hub_seqnum(hub);
+		unlink->unlink_seqnum = uurb->seqnum;
+		list_add_tail(&unlink->list, &udev->unlink_tx);
+		/* TODO - are we failing to pass through the status here? */
+
+		spin_unlock(&udev->lists_lock);
+
+		wake_up(&udev->waitq_tx);
+	} else {
+		/* Connection is dead already */
+		spin_lock(&udev->lists_lock);
+
 		list_del(&uurb->list);
 		kfree(uurb);
 		urb->hcpriv = NULL;
@@ -167,35 +216,51 @@ int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		pr_info("gives back urb %p\n", urb);
 
 		usb_hcd_unlink_urb_from_ep(hcd, urb);
-
 		usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
-
-	} else {
-		/* tcp connection is alive */
-		struct usbredir_unlink *unlink;
-
-		spin_lock(&udev->lists_lock);
-
-		/* setup CMD_UNLINK pdu */
-		unlink = kzalloc(sizeof(struct usbredir_unlink), GFP_ATOMIC);
-		if (!unlink) {
-			spin_unlock(&udev->lists_lock);
-			/* TODO complain somehow... */
-			return -ENOMEM;
-		}
-
-		unlink->seqnum = usbredir_hub_seqnum(hub);
-
-		unlink->unlink_seqnum = uurb->seqnum;
-
-		/* send cmd_unlink and try to cancel the pending URB in the
-		 * peer */
-		list_add_tail(&unlink->list, &udev->unlink_tx);
-		wake_up(&udev->waitq_tx);
-
-		spin_unlock(&udev->lists_lock);
 	}
 
-	pr_debug("leave dequeue urb %p\n", urb);
-	return 0;
+	return ret;
+}
+
+struct urb *usbredir_pop_rx_urb(struct usbredir_device *udev, int seqnum)
+{
+	struct usbredir_urb *uurb, *tmp;
+	struct urb *urb = NULL;
+	int status;
+
+	spin_lock(&udev->lists_lock);
+
+	list_for_each_entry_safe(uurb, tmp, &udev->urblist_rx, list) {
+		if (uurb->seqnum != seqnum)
+			continue;
+
+		urb = uurb->urb;
+		status = urb->status;
+
+		switch (status) {
+		case -ENOENT:
+			/* fall through */
+		case -ECONNRESET:
+			dev_info(&urb->dev->dev,
+				 "urb %p was unlinked %ssynchronuously.\n", urb,
+				 status == -ENOENT ? "" : "a");
+			break;
+		case -EINPROGRESS:
+			/* no info output */
+			break;
+		default:
+			dev_info(&urb->dev->dev,
+				 "urb %p may be in a error, status %d\n", urb,
+				 status);
+		}
+
+		list_del(&uurb->list);
+		kfree(uurb);
+		urb->hcpriv = NULL;
+
+		break;
+	}
+	spin_unlock(&udev->lists_lock);
+
+	return urb;
 }
