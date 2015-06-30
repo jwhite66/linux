@@ -9,7 +9,7 @@ You will need the USBREDIR user space tools.  They can
 be found at http://www.spice-space.org/page/UsbRedir.
 
 To use, start the usbredirserver on a remote system.
-For example, 
+For example,
  ./usbredirserver --port 4000 125f:db8a
 will export my ADATA thumb drive on the remote system.
 
