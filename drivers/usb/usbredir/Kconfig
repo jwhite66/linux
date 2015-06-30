@@ -2,7 +2,15 @@ config USBREDIR
 	tristate "USBREDIR support"
 	depends on USB && NET
 	---help---
-          XXX Todo Describe better XXX
+	  This enables connecting a remote USB device over IP using
+          the USBREDIR protocol.  This module provides a sysfs attach
+          interface which, if given a socket connected to a remote
+          usbredirserver, will enable the remote device to behave as
+          though it were connected to the system running this module.
+
+          For more information and user space tools, refer to the
+          USBREDIR project, which can be found at
+          http://www.spice-space.org/page/UsbRedir.
 
 	  To compile this as a module, choose M here: the module will
 	  be called usbredir.
