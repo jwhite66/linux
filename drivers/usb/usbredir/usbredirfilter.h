@@ -21,6 +21,11 @@
 #ifndef __USBREDIRFILTER_H
 #define __USBREDIRFILTER_H
 
+#if ! defined(__KERNEL__)
+#include <stdio.h>
+#include <stdint.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -126,7 +131,7 @@ int usbredirfilter_check(
 int usbredirfilter_verify(
     const struct usbredirfilter_rule *rules, int rules_count);
 
-#if defined (HACK_TODO_JPW)
+#if ! defined(__KERNEL__)
 /* Print the passed in rules to FILE out in human readable format */
 void usbredirfilter_print(
     const struct usbredirfilter_rule *rules, int rules_count, FILE *out);
