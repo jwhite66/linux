@@ -162,7 +162,7 @@ int usbredir_sysfs_register(struct device_driver *dev);
 void usbredir_sysfs_unregister(struct device_driver *dev);
 
 /* hub.c */
-int usbredir_hub_init(void);
+void usbredir_hub_init(void);
 void usbredir_hub_exit(void);
 struct usbredir_hub *usbredir_hub_create(void);
 void usbredir_hub_destroy(struct usbredir_hub *hub);

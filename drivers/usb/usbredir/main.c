@@ -57,11 +57,7 @@ static int __init usbredir_main_init(void)
 		return ret;
 	}
 
-	ret = usbredir_hub_init();
-	if (ret) {
-		platform_driver_unregister(&usbredir_driver);
-		return ret;
-	}
+	usbredir_hub_init();
 
 	ret = usbredir_sysfs_register(&usbredir_driver.driver);
 	if (ret) {

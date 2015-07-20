@@ -464,13 +464,11 @@ int usbredir_hub_show_global_status(char *out)
 }
 
 
-int usbredir_hub_init(void)
+void usbredir_hub_init(void)
 {
 	INIT_LIST_HEAD(&hubs);
 	atomic_set(&hub_count, 0);
 	spin_lock_init(&hubs_lock);
-
-	return 0;
 }
 
 void usbredir_hub_exit(void)
