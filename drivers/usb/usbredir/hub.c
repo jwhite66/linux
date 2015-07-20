@@ -318,8 +318,8 @@ static void usbredir_destroy_hcd(struct usbredir_hub *hub)
 	if (hub->hcd) {
 		usb_remove_hcd(hub->hcd);
 		usb_put_hcd(hub->hcd);
+		hub->hcd = NULL;
 	}
-	hub->hcd = NULL;
 }
 
 struct usbredir_hub *usbredir_hub_create(void)
@@ -407,7 +407,7 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 			spin_lock(&udev->lock);
 			if (!atomic_read(&udev->active)) {
 				found++;
-				/* Note: lock is *held* */
+				/* lock intentionally held */
 				break;
 			}
 			spin_unlock(&udev->lock);
@@ -418,19 +418,17 @@ struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 	}
 	spin_unlock(&hubs_lock);
 
-	if (!found) {
-		hub = usbredir_hub_create();
-		if (!hub)
-			return NULL;
-
-		return usbredir_hub_allocate_device(devid, socket);
+	if (found) {
+		usbredir_device_allocate(udev, devid, socket);
+		spin_unlock(&udev->lock);
+		return udev;
 	}
 
-	usbredir_device_allocate(udev, devid, socket);
+	hub = usbredir_hub_create();
+	if (!hub)
+		return NULL;
 
-	spin_unlock(&udev->lock);
-
-	return udev;
+	return usbredir_hub_allocate_device(devid, socket);
 }
 
 int usbredir_hub_show_global_status(char *out)
