@@ -90,6 +90,7 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 	int		rhport;
 	int		changed = 0;
 
+	/* TODO - irqsave... */
 	spin_lock(&hub->lock);
 
 	pr_debug("%s %d\n", __func__, hub->id);
@@ -102,6 +103,8 @@ static int usbredir_hub_status(struct usb_hcd *hcd, char *buf)
 		spin_unlock(&hub->lock);
 		return 0;
 	}
+
+	/* TODO - dummy_hcd checks resuming here */
 
 	/* check pseudo status register for each port */
 	for (rhport = 0; rhport < hub->device_count; rhport++) {
@@ -138,12 +141,13 @@ static inline void usbredir_hub_descriptor(struct usbredir_hub *hub,
 					   struct usb_hub_descriptor *desc)
 {
 	memset(desc, 0, sizeof(*desc));
-/* TODO - where do these magic numbers come from? */
-	desc->bDescriptorType = 0x29;
+	desc->bDescriptorType = USB_DT_HUB;
 	desc->bDescLength = 9;
 	desc->wHubCharacteristics = cpu_to_le16(
-		HUB_CHAR_INDV_PORT_LPSM | HUB_CHAR_COMMON_OCPM);
+			HUB_CHAR_INDV_PORT_LPSM |
+			HUB_CHAR_COMMON_OCPM);
 	desc->bNbrPorts = hub->device_count;
+	/* All ports un removable by default */
 	desc->u.hs.DeviceRemovable[0] = 0xff;
 	desc->u.hs.DeviceRemovable[1] = 0xff;
 }
