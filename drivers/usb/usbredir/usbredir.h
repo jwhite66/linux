@@ -42,7 +42,6 @@
  * @info_header		Stored USBREDIR connection information
  * @ep_info_header	Stored USBREDIR endpoint header info
  * @rhport		0 based port number on our root hub
- * @lists_lock		A spinlock just for the urb and unlink lists
  * @urblist_tx		A list of urb's ready to be transmitted
  * @urblist_rx		A list of urbs already transmitted, awaiting
  *                      a response
@@ -124,14 +123,12 @@ struct usbredir_hub {
  * struct usbredir_urb - Hold our information regarding a URB
  * @seqnum		Sequence number of the urb
  * @list		Place holder to keep it in device/urblist_[rt]x
- * @udev		A pointer to our associated device
  * @urb			A pointer to the associated urb
  */
 struct usbredir_urb {
 	int seqnum;
 	struct list_head list;
 
-	struct usbredir_device *udev;
 	struct urb *urb;
 };
 

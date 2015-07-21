@@ -23,15 +23,15 @@ static struct usbredir_urb *get_next_urb(struct usbredir_device *udev)
 {
 	struct usbredir_urb *uurb, *tmp;
 
-	spin_lock(&udev->lists_lock);
+	spin_lock(&udev->lock);
 
 	list_for_each_entry_safe(uurb, tmp, &udev->urblist_tx, list) {
 		list_move_tail(&uurb->list, &udev->urblist_rx);
-		spin_unlock(&udev->lists_lock);
+		spin_unlock(&udev->lock);
 		return uurb;
 	}
 
-	spin_unlock(&udev->lists_lock);
+	spin_unlock(&udev->lock);
 
 	return NULL;
 }
@@ -87,15 +87,15 @@ static struct usbredir_unlink *get_next_unlink(struct usbredir_device *udev)
 {
 	struct usbredir_unlink *unlink, *tmp;
 
-	spin_lock(&udev->lists_lock);
+	spin_lock(&udev->lock);
 
 	list_for_each_entry_safe(unlink, tmp, &udev->unlink_tx, list) {
 		list_move_tail(&unlink->list, &udev->unlink_rx);
-		spin_unlock(&udev->lists_lock);
+		spin_unlock(&udev->lock);
 		return unlink;
 	}
 
-	spin_unlock(&udev->lists_lock);
+	spin_unlock(&udev->lock);
 
 	return NULL;
 }
@@ -103,18 +103,16 @@ static struct usbredir_unlink *get_next_unlink(struct usbredir_device *udev)
 static void send_unlink(struct usbredir_device *udev,
 		       struct usbredir_unlink *unlink)
 {
-	while ((unlink = get_next_unlink(udev)) != NULL) {
-		/* This is a separate TODO; need to process unlink_rx... */
-		pr_debug("TODO partially unimplemented: unlink request of ");
-		pr_debug("seqnum %d, unlink seqnum %d\n",
-			unlink->seqnum, unlink->unlink_seqnum);
+	/* This is a separate TODO; need to process unlink_rx... */
+	pr_debug("TODO partially unimplemented: unlink request of ");
+	pr_debug("seqnum %d, unlink seqnum %d\n",
+		unlink->seqnum, unlink->unlink_seqnum);
 
-		/* TODO - if the other side never responds, which it may
-			not do if the seqnum doesn't match, then we
-			never clear this entry.  That's probably not ideal */
-		usbredirparser_send_cancel_data_packet(udev->parser,
-						       unlink->unlink_seqnum);
-	}
+	/* TODO - if the other side never responds, which it may
+		not do if the seqnum doesn't match, then we
+		never clear this entry.  That's probably not ideal */
+	usbredirparser_send_cancel_data_packet(udev->parser,
+					       unlink->unlink_seqnum);
 }
 
 int usbredir_tx_loop(void *data)
@@ -128,9 +126,11 @@ int usbredir_tx_loop(void *data)
 			if (usbredirparser_do_write(udev->parser))
 				break;
 
+		/* TODO - consider while versus if here */
 		while ((uurb = get_next_urb(udev)) != NULL)
 			send_packet(udev, uurb);
 
+		/* TODO - consider while versus if here */
 		while ((unlink = get_next_unlink(udev)) != NULL)
 			send_unlink(udev, unlink);
 

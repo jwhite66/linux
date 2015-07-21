@@ -30,7 +30,6 @@ void usbredir_device_init(struct usbredir_device *udev, int port,
 	udev->hub = hub;
 	atomic_set(&udev->active, 0);
 	spin_lock_init(&udev->lock);
-	spin_lock_init(&udev->lists_lock);
 
 	INIT_LIST_HEAD(&udev->urblist_rx);
 	INIT_LIST_HEAD(&udev->urblist_tx);
@@ -70,7 +69,7 @@ void usbredir_device_cleanup_unlink(struct usbredir_device *udev)
 {
 	struct usbredir_unlink *unlink, *tmp;
 
-	spin_lock(&udev->lists_lock);
+	spin_lock(&udev->lock);
 	list_for_each_entry_safe(unlink, tmp, &udev->unlink_tx, list) {
 		list_del(&unlink->list);
 		kfree(unlink);
@@ -80,7 +79,7 @@ void usbredir_device_cleanup_unlink(struct usbredir_device *udev)
 		list_del(&unlink->list);
 		kfree(unlink);
 	}
-	spin_unlock(&udev->lists_lock);
+	spin_unlock(&udev->lock);
 }
 
 void usbredir_device_deallocate(struct usbredir_device *udev,

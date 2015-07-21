@@ -20,28 +20,24 @@
 
 #include "usbredir.h"
 
+/* Lock must be held by caller */
 static void queue_urb(struct usbredir_device *udev, struct urb *urb)
 {
 	struct usbredir_urb *uurb;
 
 	uurb = kzalloc(sizeof(struct usbredir_urb), GFP_ATOMIC);
 	if (!uurb) {
-		usbredir_device_disconnect(udev);
-		usbredir_device_deallocate(udev, true, true);
+		/* TODO - handle this failure... discon/dealloc? */
 		return;
 	}
 
-	spin_lock(&udev->lists_lock);
-
 	uurb->seqnum = usbredir_hub_seqnum(udev->hub);
 
-	uurb->udev = udev;
 	uurb->urb = urb;
 
 	urb->hcpriv = (void *) uurb;
 
 	list_add_tail(&uurb->list, &udev->urblist_tx);
-	spin_unlock(&udev->lists_lock);
 }
 
 static bool intercept_urb_request(struct usbredir_device *udev,
@@ -102,7 +98,7 @@ void usbredir_urb_cleanup_urblists(struct usbredir_device *udev)
 {
 	struct usbredir_urb *uurb, *tmp;
 
-	spin_lock(&udev->lists_lock);
+	spin_lock(&udev->lock);
 	list_for_each_entry_safe(uurb, tmp, &udev->urblist_rx, list) {
 		list_del(&uurb->list);
 		usb_hcd_unlink_urb_from_ep(udev->hub->hcd, uurb->urb);
@@ -116,7 +112,7 @@ void usbredir_urb_cleanup_urblists(struct usbredir_device *udev)
 		usb_hcd_giveback_urb(udev->hub->hcd, uurb->urb, -ENODEV);
 		kfree(uurb);
 	}
-	spin_unlock(&udev->lists_lock);
+	spin_unlock(&udev->lock);
 }
 
 
@@ -127,40 +123,52 @@ int usbredir_urb_enqueue(struct usb_hcd *hcd, struct urb *urb, gfp_t mem_flags)
 	int ret = 0;
 	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
 	struct usbredir_device *udev;
+	unsigned long flags;
 
 	pr_debug("%s: enter, usb_hcd %p urb %p mem_flags %d\n",
 			  __func__, hcd, urb, mem_flags);
 
-	/* TODO - we will need a lock with irqsave for some of these... */
-
-	/* TODO - This check may no longer be needed */
-	if (urb->status != -EINPROGRESS) {
-		dev_err(dev, "URB already handled!, status %d\n", urb->status);
-		return urb->status;
-	}
+	spin_lock_irqsave(&hub->lock, flags);
 
 	udev = hub->devices + urb->dev->portnum - 1;
 
 	if (!atomic_read(&udev->active)) {
 		dev_err(dev, "enqueue for inactive port %d\n", udev->rhport);
+		spin_unlock_irqrestore(&hub->lock, flags);
 		return -ENODEV;
 	}
 
 	ret = usb_hcd_link_urb_to_ep(hcd, urb);
 	if (ret) {
-		usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
+		spin_unlock_irqrestore(&hub->lock, flags);
 		return ret;
 	}
 
 	if (intercept_urb_request(udev, urb, &ret)) {
 		usb_hcd_unlink_urb_from_ep(hcd, urb);
+		spin_unlock_irqrestore(&hub->lock, flags);
 		usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
-		return ret;
+		return 0;
 	}
 
 	queue_urb(udev, urb);
+	spin_unlock_irqrestore(&hub->lock, flags);
+
 	wake_up_interruptible(&udev->waitq_tx);
-	return ret;
+
+	return 0;
+}
+
+static void usbredir_free_uurb(struct usbredir_device *udev, struct urb *urb)
+{
+	struct usbredir_urb *uurb = urb->hcpriv;
+	if (uurb) {
+		spin_lock(&udev->lock);
+		list_del(&uurb->list);
+		kfree(uurb);
+		urb->hcpriv = NULL;
+		spin_unlock(&udev->lock);
+	}
 }
 
 int usbredir_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
@@ -169,58 +177,51 @@ int usbredir_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 	struct usbredir_device *udev;
 	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
 	int ret = 0;
+	unsigned long flags;
 
 	pr_debug("%s %p\n", __func__, urb);
 
 	uurb = urb->hcpriv;
-	if (!uurb) {
-		/* URB was never linked! or will be soon given back by
-		 * rx_loop. */
-		return 0;
-	}
 
-	/* TODO - need a spin lock w/irqsave here */
+	spin_lock_irqsave(&hub->lock, flags);
+	udev = hub->devices + urb->dev->portnum - 1;
+
 	ret = usb_hcd_check_unlink_urb(hcd, urb, status);
 	if (ret) {
 		/* TODO - figure out if this is an unlink send case as well */
+		usbredir_free_uurb(udev, urb);
+		spin_unlock_irqrestore(&hub->lock, flags);
 		return ret;
 	}
 
-	udev = uurb->udev;
-	if (atomic_read(&udev->active)) {
-		struct usbredir_unlink *unlink;
 
-		spin_lock(&udev->lists_lock);
+	if (atomic_read(&udev->active) && uurb) {
+		struct usbredir_unlink *unlink;
 
 		unlink = kzalloc(sizeof(struct usbredir_unlink), GFP_ATOMIC);
 		if (!unlink) {
-			spin_unlock(&udev->lists_lock);
 			/* TODO complain somehow... */
 			return -ENOMEM;
 		}
 
 		unlink->seqnum = usbredir_hub_seqnum(hub);
 		unlink->unlink_seqnum = uurb->seqnum;
-		list_add_tail(&unlink->list, &udev->unlink_tx);
-		/* TODO - are we failing to pass through the status here? */
 
-		spin_unlock(&udev->lists_lock);
+		/* TODO - are we failing to pass through the status here? */
+		spin_lock(&udev->lock);
+		list_add_tail(&unlink->list, &udev->unlink_tx);
+		spin_unlock(&udev->lock);
+
+		spin_unlock_irqrestore(&hub->lock, flags);
 
 		wake_up(&udev->waitq_tx);
 	} else {
 		/* Connection is dead already */
-		spin_lock(&udev->lists_lock);
+		usbredir_free_uurb(udev, urb);
 
-		list_del(&uurb->list);
-		kfree(uurb);
-		urb->hcpriv = NULL;
-
-		spin_unlock(&udev->lists_lock);
-
-		pr_info("gives back urb %p\n", urb);
-
-		/* TODO - probably need locks w/irq here */
 		usb_hcd_unlink_urb_from_ep(hcd, urb);
+		spin_unlock_irqrestore(&hub->lock, flags);
+
 		usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
 	}
 
@@ -233,7 +234,7 @@ struct urb *usbredir_pop_rx_urb(struct usbredir_device *udev, int seqnum)
 	struct urb *urb = NULL;
 	int status;
 
-	spin_lock(&udev->lists_lock);
+	spin_lock(&udev->lock);
 
 	list_for_each_entry_safe(uurb, tmp, &udev->urblist_rx, list) {
 		if (uurb->seqnum != seqnum)
@@ -265,7 +266,7 @@ struct urb *usbredir_pop_rx_urb(struct usbredir_device *udev, int seqnum)
 
 		break;
 	}
-	spin_unlock(&udev->lists_lock);
+	spin_unlock(&udev->lock);
 
 	return urb;
 }

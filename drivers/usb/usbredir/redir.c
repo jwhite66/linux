@@ -398,6 +398,7 @@ static void redir_control_packet(void *priv,
 	}
 
 	usb_hcd_unlink_urb_from_ep(udev->hub->hcd, urb);
+	/* TODO - kfree(uurb) ? */
 	usb_hcd_giveback_urb(udev->hub->hcd, urb, urb->status);
 }
 
@@ -430,6 +431,7 @@ static void redir_bulk_packet(void *priv,
 	/* TODO - handle more than this flavor... */
 
 	usb_hcd_unlink_urb_from_ep(udev->hub->hcd, urb);
+	/* TODO - kfree(uurb) ? */
 	usb_hcd_giveback_urb(udev->hub->hcd, urb, urb->status);
 }
 
