@@ -33,6 +33,7 @@ static struct platform_driver usbredir_driver = {
 	.driver	= {
 		.name = driver_name,
 	},
+	/* TODO - why not remove, suspend, and resume? */
 };
 
 static int __init usbredir_main_init(void)
