@@ -164,8 +164,6 @@ void usbredir_sysfs_unregister(struct device_driver *dev);
 /* hub.c */
 void usbredir_hub_init(void);
 void usbredir_hub_exit(void);
-struct usbredir_hub *usbredir_hub_create(void);
-void usbredir_hub_destroy(struct usbredir_hub *hub);
 struct usbredir_device *usbredir_hub_allocate_device(const char *devid,
 						     struct socket *socket);
 struct usbredir_device *usbredir_hub_find_device(const char *devid);

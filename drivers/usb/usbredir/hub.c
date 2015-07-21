@@ -248,7 +248,7 @@ static int usbredir_bus_resume(struct usb_hcd *hcd)
 static void usbredir_release_hub_dev(struct device *dev)
 {
 	/* TODO - what do we need to implement here? */
-	/* This is called to free memory when the last device ref is fone */
+	/* This is called to free memory when the last device ref is done */
 	/* Question: can we forcibly remove a device without unloading our
 	 * module? If so, then this may be our entry point. */
 	pr_err("%s: not implemented\n", __func__);
@@ -316,9 +316,6 @@ static int usbredir_create_hcd(struct usbredir_hub *hub)
 
 	hub->hcd->has_tt = 1;
 
-	/* TODO - no one else stores a pointer
-	*        may want to rethink the structure.
-	*        Question:  do we really need to create the pdev first? */
 	*((struct usbredir_hub **) hub->hcd->hcd_priv) = hub;
 
 	ret = usb_add_hcd(hub->hcd, 0, 0);
@@ -340,7 +337,7 @@ static void usbredir_destroy_hcd(struct usbredir_hub *hub)
 	}
 }
 
-struct usbredir_hub *usbredir_hub_create(void)
+static struct usbredir_hub *usbredir_hub_create(void)
 {
 	struct usbredir_hub *hub;
 	int id = atomic_inc_return(&hub_count);
@@ -373,7 +370,7 @@ dec_exit:
 	return NULL;
 }
 
-void usbredir_hub_destroy(struct usbredir_hub *hub)
+static void usbredir_hub_destroy(struct usbredir_hub *hub)
 {
 	usbredir_hub_stop(hub);
 	usbredir_destroy_hcd(hub);
