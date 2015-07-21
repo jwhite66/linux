@@ -131,6 +131,9 @@ int usbredir_urb_enqueue(struct usb_hcd *hcd, struct urb *urb, gfp_t mem_flags)
 	pr_debug("%s: enter, usb_hcd %p urb %p mem_flags %d\n",
 			  __func__, hcd, urb, mem_flags);
 
+	/* TODO - we will need a lock with irqsave for some of these... */
+
+	/* TODO - This check may no longer be needed */
 	if (urb->status != -EINPROGRESS) {
 		dev_err(dev, "URB already handled!, status %d\n", urb->status);
 		return urb->status;
@@ -176,6 +179,7 @@ int usbredir_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		return 0;
 	}
 
+	/* TODO - need a spin lock w/irqsave here */
 	ret = usb_hcd_check_unlink_urb(hcd, urb, status);
 	if (ret) {
 		/* TODO - figure out if this is an unlink send case as well */
@@ -215,6 +219,7 @@ int usbredir_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
 		pr_info("gives back urb %p\n", urb);
 
+		/* TODO - probably need locks w/irq here */
 		usb_hcd_unlink_urb_from_ep(hcd, urb);
 		usb_hcd_giveback_urb(hub->hcd, urb, urb->status);
 	}

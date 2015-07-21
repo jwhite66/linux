@@ -1,4 +1,6 @@
 TODO:
+  *  Not obeying irq / spin lock rules correctly
+  *  Study dummy_hcd / usbip and mirror
   *  Note - during testing, having a device die unexpectedly
      could go on to cause fairly serious problems.  Need to
      explore that.

@@ -59,6 +59,7 @@ static void usbredir_hub_stop(struct usbredir_hub *hub)
 
 	pr_debug("%s %d\n", __func__, hub->id);
 
+	/* TODO - the dummy hcd does not have this equivalent in its stop... */
 	for (i = 0; i < hub->device_count && hub->devices; i++) {
 		usbredir_device_disconnect(hub->devices + i);
 		usbredir_device_deallocate(hub->devices + i, true, true);
@@ -266,9 +267,10 @@ static struct hc_driver usbredir_hc_driver = {
 	.product_desc	= driver_desc,
 	.hcd_priv_size	= sizeof(struct usbredir_hub *),
 
-	/* TODO = what other flags are available and what of USB3? */
+	/* TODO = what other flags are available and what of USB3|SHARED? */
 	.flags		= HCD_USB2,
 
+	/* TODO - reset - aka setup? */
 	.start		= usbredir_hcd_start,
 	.stop		= usbredir_hcd_stop,
 
@@ -281,6 +283,8 @@ static struct hc_driver usbredir_hc_driver = {
 	.hub_control    = usbredir_hub_control,
 	.bus_suspend	= usbredir_bus_suspend,
 	.bus_resume	= usbredir_bus_resume,
+
+	/* TODO - alloc/free streams? */
 };
 
 
