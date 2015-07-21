@@ -1,6 +1,10 @@
 TODO:
+  *  dummy_hcd suspend/resume/timeout code is unclear
+     Need to study, figure out what we need, and if we
+     need a timer
   *  Not obeying irq / spin lock rules correctly
   *  Study dummy_hcd / usbip and mirror
+  *  Thoughtfully inject kerneldocs
   *  Note - during testing, having a device die unexpectedly
      could go on to cause fairly serious problems.  Need to
      explore that.
@@ -9,6 +13,7 @@ TODO:
   *  Hmm.  KFP_ATOMIC on our mallocs may be better than _KERNEL...
   *  Read and deal with the many TODOs
   *  Not just hacking the usbredirparser, but proper patches
+     - Run checkpatch, send many things upstream
      - The filter needs love.  Use strsep, not strtok?
   *  Expose a sysfs attribute and have udev use it
   *  Turn on more capabilities and watch it go

@@ -159,10 +159,12 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	int             ret = 0;
 	int		rhport;
 
+	/* TODO - confirm this is still necessary */
 	if (!HCD_HW_ACCESSIBLE(hcd))
 		return -ETIMEDOUT;
 
 	hub = usbredir_hub_from_hcd(hcd);
+	/* TODO - spin lock irqsave */
 
 	pr_debug("%s hub %d: ", __func__, hub->id);
 	pr_debug("[wValue %x|wIndex%u|wLength %u]",
@@ -171,6 +173,9 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	/* wIndex is 1 based */
 	rhport = ((__u8)(wIndex & 0x00ff)) - 1;
 
+	/* TODO - dummy has SetHubDepth */
+	/* TODO - dummy has DeviceRequest | USB_REQ_GET_DESCRIPTOR - USB3 */
+	/* TODO - dummy has GetPortErrorcount */
 	switch (typeReq) {
 	case ClearHubFeature:
 		pr_debug(" ClearHubFeature\n");
@@ -180,6 +185,7 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		ret = -EPIPE;
 		break;
 	case GetHubDescriptor:
+		/* TODO - USB 3 */
 		pr_debug(" GetHubDescriptor\n");
 		usbredir_hub_descriptor(hub, (struct usb_hub_descriptor *) buf);
 		break;
@@ -204,6 +210,8 @@ static int usbredir_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		/* "protocol stall" on error */
 		ret = -EPIPE;
 	}
+
+	/* TODO - dummy invokes a poll on certain status changes */
 	return ret;
 }
 
@@ -240,6 +248,9 @@ static int usbredir_bus_resume(struct usb_hcd *hcd)
 static void usbredir_release_hub_dev(struct device *dev)
 {
 	/* TODO - what do we need to implement here? */
+	/* This is called to free memory when the last device ref is fone */
+	/* Question: can we forcibly remove a device without unloading our
+	 * module? If so, then this may be our entry point. */
 	pr_err("%s: not implemented\n", __func__);
 }
 
