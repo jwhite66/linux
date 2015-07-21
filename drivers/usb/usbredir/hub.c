@@ -314,7 +314,6 @@ static int usbredir_create_hcd(struct usbredir_hub *hub)
 		return -ENOMEM;
 	}
 
-	/* TODO - review if we want to has_tt, and anything like it... */
 	hub->hcd->has_tt = 1;
 
 	/* TODO - no one else stores a pointer
