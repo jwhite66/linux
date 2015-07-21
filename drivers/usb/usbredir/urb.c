@@ -94,11 +94,11 @@ static bool intercept_urb_request(struct usbredir_device *udev,
 	return true;
 }
 
+/* Caller must hold lock */
 void usbredir_urb_cleanup_urblists(struct usbredir_device *udev)
 {
 	struct usbredir_urb *uurb, *tmp;
 
-	spin_lock(&udev->lock);
 	list_for_each_entry_safe(uurb, tmp, &udev->urblist_rx, list) {
 		list_del(&uurb->list);
 		usb_hcd_unlink_urb_from_ep(udev->hub->hcd, uurb->urb);
@@ -112,7 +112,6 @@ void usbredir_urb_cleanup_urblists(struct usbredir_device *udev)
 		usb_hcd_giveback_urb(udev->hub->hcd, uurb->urb, -ENODEV);
 		kfree(uurb);
 	}
-	spin_unlock(&udev->lock);
 }
 
 
@@ -124,9 +123,6 @@ int usbredir_urb_enqueue(struct usb_hcd *hcd, struct urb *urb, gfp_t mem_flags)
 	struct usbredir_hub *hub = usbredir_hub_from_hcd(hcd);
 	struct usbredir_device *udev;
 	unsigned long flags;
-
-	pr_debug("%s: enter, usb_hcd %p urb %p mem_flags %d\n",
-			  __func__, hcd, urb, mem_flags);
 
 	spin_lock_irqsave(&hub->lock, flags);
 

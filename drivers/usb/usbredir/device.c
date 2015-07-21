@@ -65,11 +65,11 @@ void usbredir_device_allocate(struct usbredir_device *udev,
 	udev->tx = kthread_run(usbredir_tx_loop, udev, pname);
 }
 
-void usbredir_device_cleanup_unlink(struct usbredir_device *udev)
+/* Caller must hold lock */
+static void usbredir_device_cleanup_unlink(struct usbredir_device *udev)
 {
 	struct usbredir_unlink *unlink, *tmp;
 
-	spin_lock(&udev->lock);
 	list_for_each_entry_safe(unlink, tmp, &udev->unlink_tx, list) {
 		list_del(&unlink->list);
 		kfree(unlink);
@@ -79,7 +79,6 @@ void usbredir_device_cleanup_unlink(struct usbredir_device *udev)
 		list_del(&unlink->list);
 		kfree(unlink);
 	}
-	spin_unlock(&udev->lock);
 }
 
 void usbredir_device_deallocate(struct usbredir_device *udev,

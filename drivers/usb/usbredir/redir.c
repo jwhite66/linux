@@ -94,6 +94,7 @@ static int redir_write(void *priv, uint8_t *data, int count)
 
 	spin_lock(&udev->lock);
 	socket = udev->socket;
+	/* TODO - reference/dereference the socket? */
 	spin_unlock(&udev->lock);
 
 	while (!kthread_should_stop() && atomic_read(&udev->active)) {
