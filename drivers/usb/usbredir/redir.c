@@ -96,11 +96,20 @@ static int redir_write(void *priv, uint8_t *data, int count)
 	socket = udev->socket;
 	spin_unlock(&udev->lock);
 
-	rc = kernel_sendmsg(socket, &msg, &iov, 1, count);
-	/* TODO - In theory, a return of 0 should be okay,
-	 *        but, again, in theory, it will cause an error. */
-	if (rc <= 0)
-		pr_err("Error: TODO - unexpected write return code %d.\n", rc);
+	while (!kthread_should_stop() && atomic_read(&udev->active)) {
+		rc = kernel_sendmsg(socket, &msg, &iov, 1, count);
+
+		if (rc == -EAGAIN) {
+			/* TODO - add schedule() ? */
+			continue;
+		}
+		/* TODO - In theory, a return of 0 should be okay,
+		 *        but, again, in theory, it will cause an error. */
+		if (rc <= 0)
+			pr_err("Error: TODO - unexpected write return code %d.\n", rc);
+
+		break;
+	}
 
 	return rc;
 }
